@@ -72,7 +72,7 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]Column, error) {
 		line = strings.TrimSuffix(line, ",")
 
 		matches := reColumn.FindStringSubmatch(line)
-		if len(matches) < 3 {
+		if len(matches) < 3 || strings.Contains(strings.ToTitle(matches[1]), "INDEX") {
 			continue
 		}
 
@@ -89,6 +89,7 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]Column, error) {
 }
 
 func (p *Parser) GetTableName(file []byte) (string, error) {
+	// fixme Если будет CREATE TABLE IF NOT EXISTS, то полетит
 	patternTableName := `(?i)CREATE\s+TABLE\s+\w+`
 	reTableName, err := regexp.Compile(patternTableName)
 	if err != nil {
@@ -97,7 +98,11 @@ func (p *Parser) GetTableName(file []byte) (string, error) {
 
 	finded := reTableName.FindString(string(file))
 
-	tableName := strings.TrimLeft(finded, "CREATE TABLE ")
+	foundSlice := strings.Split(finded, " ")
+
+	tableName := strings.Join(foundSlice[2:], "")
+
+	//tableName := strings.TrimLeft(finded, "CREATE TABLE ")
 
 	return p.toCamelCase(tableName), nil
 }

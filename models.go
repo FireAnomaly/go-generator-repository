@@ -13,6 +13,7 @@ type Database struct {
 	Columns   []Column
 }
 
+// todo Добавить поддержку ENUM
 type Column struct {
 	Name   string
 	Type   string

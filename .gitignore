@@ -1,1 +1,4 @@
 /db
+/.env
+/.idea
+/exampleTemplate.go
