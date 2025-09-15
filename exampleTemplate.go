@@ -16,6 +16,13 @@ type Repository struct {
 	db     *sql.DB
 }
 
+func NewRepository(logger *zap.Logger, db *sql.DB) *Repository {
+	return &Repository{
+		logger: logger,
+		db:     db,
+	}
+}
+
 // Для маппинга
 
 type Pair struct {
@@ -144,13 +151,6 @@ func dereferencedValue(t reflect.Value) reflect.Value {
 }
 
 var testStruct = new(ExampleModel)
-
-func NewRepository(logger *zap.Logger, db *sql.DB) *Repository {
-	return &Repository{
-		logger: logger,
-		db:     db,
-	}
-}
 
 var userStruct = sqlbuilder.NewStruct(new(ExampleModel))
 
