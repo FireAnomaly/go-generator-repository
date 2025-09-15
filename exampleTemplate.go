@@ -48,18 +48,18 @@ func (m *ExampleModel) SelectBuilder(fields ...any) *sqlbuilder.SelectBuilder {
 func (m *ExampleModel) parse(s ...any) []Pair {
 	var pair []Pair
 	for k, v := range s {
-		val := reflect.ValueOf(s)
-		t := dereferencedType(val)
+		tRef := reflect.TypeOf(v)
+		name := tRef.Name()
 
-		name := t.
-		addr := t.FieldByName(name)Addr()
+		valOf := reflect.ValueOf(v)
+		refVal := dereferencedValue(valOf)
 
-
+		addr := refVal.FieldByName(name).Addr().Interface()
 
 	}
 }
 
-func dereferencedType(t reflect.Value) reflect.Value {
+func dereferencedValue(t reflect.Value) reflect.Value {
 	for k := t.Kind(); k == reflect.Ptr || k == reflect.Interface; k = t.Kind() {
 		t = t.Elem()
 	}
