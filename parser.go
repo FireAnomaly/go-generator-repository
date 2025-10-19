@@ -74,44 +74,100 @@ func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]Database, e
 	return databases, nil
 }
 
+const (
+	lenMatchesToParseNameAndType = 2
+	minimumLineLengthToHaveUint  = 2
+	minLenToEnums                = 2
+)
+
 func (p *Parser) GetColumns(fileInfo []byte) ([]Column, error) {
 	p.logger.Debug("GetColumns called")
 
-	lines := bytes.Lines((fileInfo)[1:])
+	lines := bytes.Lines(fileInfo)
 
 	reColumn := regexp.MustCompile(`\b\w+\b`)
-	reEnum := regexp.MustCompile(`'([^']*)'`)
+	reEnum := regexp.MustCompile(`\(([^)]*)\)`)
+	reDefault := regexp.MustCompile(`(?i)DEFAULT\s+(['"]?[\w\s]*['"]?)`)
+
 	var columns []Column
+	var currentLine int
 
 	for line := range lines {
-		line = bytes.Trim(bytes.TrimSpace(line), ",")
+		currentLine++
+		if bytes.Contains(bytes.ToUpper(line), []byte("CREATE TABLE")) {
+			p.logger.Debug("Got CREATE TABLE line, skipping", zap.Int("lineNumber", currentLine))
 
-		var column Column
-		matches := reColumn.FindAllSubmatch(line, -1)
-		if len(matches) < 3 {
 			continue
 		}
 
-		match := matches[0]
+		p.logger.Debug("Processing line", zap.Int("lineNumber", currentLine), zap.ByteString("lineContent", line))
 
-		column.Name = string(match[0]) // Преобразовывать в CamelCase для структуры, а для тега оставить как есть
-		column.Type = string(match[1])
+		line = bytes.Trim(bytes.TrimSpace(line), ",")
 
-		isUint := false
-		if bytes.Equal(bytes.ToLower(match[2]), []byte(`unsigned`)) {
-			isUint = true
+		p.logger.Debug("line after trim", zap.ByteString("trimmedLine", line))
+
+		var column Column
+		matches := reColumn.FindAllSubmatch(line, -1)
+		if len(matches) < lenMatchesToParseNameAndType {
+			p.logger.Debug("Line does not match expected column format, skipping", zap.Int("lineNumber", currentLine))
+
+			continue
 		}
-		if isUint {
-			column.Type = "uint"
+
+		columnType, ok := ReverseSupportedTypes[string(bytes.ToLower(matches[1][0]))]
+		if !ok {
+			p.logger.Debug("Unsupported column type found, skipping",
+				zap.String("type", string(matches[1][0])),
+				zap.Int("lineNumber", currentLine))
+
+			continue
 		}
 
-		if column.Type == "enum" {
-			for _, v := range reEnum.FindAllSubmatch(line, -1) {
-				column.EnumValues = append(column.EnumValues, string(v[1]))
+		column.OriginalName = string(matches[0][0])
+		column.Type = columnType
+		column.IsNull = true
+
+		if bytes.Contains(bytes.ToLower(line), []byte("not null")) {
+			column.IsNull = false
+		}
+
+		if strings.ToLower(column.Type) == "enum" {
+			enums := reEnum.FindSubmatch(line)
+			if len(enums) < minLenToEnums {
+				p.logger.Debug("Enum type found but no values present, skipping",
+					zap.String("column", column.OriginalName),
+					zap.Int("lineNumber", currentLine))
+
+				continue
+			}
+
+			enumValues := strings.Split(string(enums[1]), ",")
+			for _, enumValue := range enumValues {
+				trimmedEnumValue := strings.TrimPrefix(strings.Trim(enumValue, `'`), ` '`)
+				p.logger.Debug("Found enum", zap.String("enum", trimmedEnumValue))
+
+				column.EnumValues = append(column.EnumValues, trimmedEnumValue)
 			}
 		}
 
-		// todo добавить значения для default и isNull
+		// Проверка на unsigned для целочисленных типов
+		if len(matches) > minimumLineLengthToHaveUint {
+			isUint := false
+			if bytes.Equal(bytes.ToLower(matches[2][0]), []byte(`unsigned`)) {
+				isUint = true
+			}
+			if isUint {
+				column.Type = "uint"
+			}
+		}
+
+		if bytes.Contains(bytes.ToLower(line), []byte("default")) {
+			matchesDefaults := reDefault.FindSubmatch(line)
+			if len(matchesDefaults) > 1 {
+				p.logger.Debug("Found default value", zap.String("value", string(matchesDefaults[1])))
+				column.DefaultValue = strings.Trim(string(matchesDefaults[1]), `'`)
+			}
+		}
 
 		columns = append(columns, column)
 	}

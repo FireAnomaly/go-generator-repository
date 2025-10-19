@@ -10,7 +10,7 @@ package main
 // // Для маппинга
 //
 // type Pair struct {
-// 	Name    string
+// 	OriginalName    string
 // 	Pointer any
 // }
 //
@@ -40,7 +40,7 @@ package main
 // 	var pair []Pair
 // 	for k, v := range s {
 // 		tRef := reflect.TypeOf(v)
-// 		name := tRef.Name()
+// 		name := tRef.OriginalName()
 //
 // 		valOf := reflect.ValueOf(v)
 // 		refVal := dereferencedValue(valOf)

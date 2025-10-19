@@ -19,7 +19,7 @@ type TableNames struct {
 }
 
 type Column struct {
-	Name         string
+	OriginalName string
 	Type         string
 	DefaultValue any
 	EnumValues   []string
@@ -42,7 +42,10 @@ var SupportedTypes = map[string][]string{
 	},
 	"string": {
 		"char", "varchar", "text", "tinytext", "mediumtext", "longtext",
-		"enum", "set",
+		"set",
+	},
+	"enum": {
+		"enum",
 	},
 	"bool": {
 		"bool", "boolean",
@@ -88,7 +91,7 @@ var ReverseSupportedTypes = map[string]string{
 	"tinytext":           "string",
 	"mediumtext":         "string",
 	"longtext":           "string",
-	"enum":               "string",
+	"enum":               "enum",
 	"set":                "string",
 	"bool":               "bool",
 	"boolean":            "bool",

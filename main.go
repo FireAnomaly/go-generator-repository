@@ -45,7 +45,7 @@ func main() {
 			zap.String("original", v.TableNames.Original))
 		for _, v2 := range v.Columns {
 			logger.Info("fields: ",
-				zap.String("name", v2.Name),
+				zap.String("name", v2.OriginalName),
 				zap.String("type", v2.Type),
 				zap.Bool("is_null", v2.IsNull),
 				zap.Any("default_value", v2.DefaultValue),
