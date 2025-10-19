@@ -116,14 +116,14 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, error) {
 		var column model.Column
 		matches := reColumn.FindAllSubmatch(line, -1)
 		if len(matches) < lenMatchesToParseNameAndType {
-			p.logger.Debug("Line does not match expected column format, skipping", zap.Int("lineNumber", currentLine))
+			p.logger.Warn("Line does not match expected column format, skipping", zap.Int("lineNumber", currentLine))
 
 			continue
 		}
 
 		columnType, ok := model.ReverseSupportedTypes[string(bytes.ToLower(matches[1][0]))]
 		if !ok {
-			p.logger.Debug("Unsupported column type found, skipping",
+			p.logger.Error("Unsupported column type found, skipping",
 				zap.String("type", string(matches[1][0])),
 				zap.Int("lineNumber", currentLine))
 
@@ -131,6 +131,7 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, error) {
 		}
 
 		column.OriginalName = string(matches[0][0])
+		column.CamelCaseName = p.toCamelCase(column.OriginalName)
 		column.Type = columnType
 		column.IsNull = true
 

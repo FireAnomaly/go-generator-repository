@@ -4,17 +4,19 @@ import (
 	"generatorFromMigrations/cli"
 	"generatorFromMigrations/model"
 	"generatorFromMigrations/parsers/mysql"
+	"generatorFromMigrations/templater"
 	_ "github.com/go-sql-driver/mysql"
 	"go.uber.org/zap"
 )
 
 var (
-	parser       FileParser
-	tableManager TableManager
+	parser          FileParser
+	tableManager    TableManager
+	templateManager TemplaterManager
 )
 
 func main() {
-	// logger, _ := zap.NewDevelopment()
+	//logger, _ := zap.NewDevelopment()
 	logger := zap.NewNop()
 
 	migration := "examples"
@@ -32,6 +34,15 @@ func main() {
 		logger.Fatal("Failed to manage table by user", zap.Error(err))
 		panic(err)
 	}
+
+	templateManager = templater.NewTemplater(logger)
+	for _, db := range databases {
+		err = templateManager.CreateDBModel(&db)
+		if err != nil {
+			logger.Fatal("Failed to create DB model", zap.Error(err))
+			panic(err)
+		}
+	}
 }
 
 // FileParser Интерфейс для возможного кастомного парсера.
@@ -41,4 +52,8 @@ type FileParser interface {
 
 type TableManager interface {
 	ManageTableByUser(dbs []model.Database) error
+}
+
+type TemplaterManager interface {
+	CreateDBModel(database *model.Database) error
 }

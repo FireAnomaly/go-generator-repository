@@ -26,7 +26,7 @@ func NewTableWriterOnCLI(logger *zap.Logger) *TableWriterOnCLI {
 	colorCfg := renderer.ColorizedConfig{
 		Header: renderer.Tint{
 			FG: renderer.Colors{color.FgGreen, color.Bold}, // Green bold headers
-			BG: renderer.Colors{color.BgHiWhite},
+			BG: renderer.Colors{color.BgBlack},
 		},
 		Column: renderer.Tint{
 			FG: renderer.Colors{color.FgCyan}, // Default cyan for rows

@@ -19,11 +19,17 @@ type TableNames struct {
 }
 
 type Column struct {
-	OriginalName string
-	Type         string
-	DefaultValue any
-	EnumValues   []string
-	IsNull       bool
+	OriginalName  string
+	CamelCaseName string
+	Type          string
+	DefaultValue  any
+	EnumValues    []string
+	IsNull        bool
+	IsFailed      error
+}
+
+func (c *Column) IsEnum() bool {
+	return c.Type == "enum"
 }
 
 // SupportedTypes содержит поддерживаемые типы данных и их синонимы - При парсинге приводить к нижнему регистру.
@@ -50,7 +56,7 @@ var SupportedTypes = map[string][]string{
 	"bool": {
 		"bool", "boolean",
 	},
-	"datetime": {
+	"time.Time": {
 		"date", "datetime", "timestamp", "time", "year",
 	},
 }
@@ -95,11 +101,11 @@ var ReverseSupportedTypes = map[string]string{
 	"set":                "string",
 	"bool":               "bool",
 	"boolean":            "bool",
-	"date":               "datetime",
-	"datetime":           "datetime",
-	"timestamp":          "datetime",
-	"time":               "datetime",
-	"year":               "datetime",
+	"date":               "time.Time",
+	"datetime":           "time.Time",
+	"timestamp":          "time.Time",
+	"time":               "time.Time",
+	"year":               "time.Time",
 }
 
 // Поведение при Enum
