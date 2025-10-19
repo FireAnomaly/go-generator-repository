@@ -1,54 +1,59 @@
 package main
 
 import (
-	"context"
-	"database/sql"
-	"os"
-	"os/signal"
-	"syscall"
-
+	"generatorFromMigrations/cli"
+	"generatorFromMigrations/model"
+	"generatorFromMigrations/parsers/mysql"
+	"generatorFromMigrations/templater"
 	_ "github.com/go-sql-driver/mysql"
 	"go.uber.org/zap"
 )
 
-var dsn = "root:rootpass@tcp(localhost:3306)/tests?parseTime=true"
-
-func openConnect(driverName, dsn string) (*sql.DB, error) {
-	return sql.Open(driverName, dsn)
-}
+var (
+	parser          FileParser
+	tableManager    TableManager
+	templateManager TemplaterManager
+)
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
+	//logger, _ := zap.NewDevelopment()
 	logger := zap.NewNop()
 
-	db, err := openConnect("mysql", dsn)
+	migration := "examples"
+
+	parser = mysql.NewParser(migration, logger)
+	databases, err := parser.GetDatabasesFromMigrations(migration)
 	if err != nil {
+		logger.Fatal("Failed to get migrations", zap.Error(err))
 		panic(err)
 	}
-	repo := NewRepository(logger, db)
 
-	err = repo.HAHAHA(ctx)
+	tableManager = cli.NewTableWriterOnCLI(logger)
+	err = tableManager.ManageTableByUser(databases)
 	if err != nil {
+		logger.Fatal("Failed to manage table by user", zap.Error(err))
 		panic(err)
 	}
-	/*
-		migration := "db/migrations"
 
-		parser := NewParser(migration)
-		databases, err := parser.GetDatabasesFromMigrations(migration)
+	templateManager = templater.NewTemplater(logger)
+	for _, db := range databases {
+		err = templateManager.CreateDBModel(&db)
 		if err != nil {
+			logger.Fatal("Failed to create DB model", zap.Error(err))
 			panic(err)
 		}
-
-		for _, v := range databases {
-			fmt.Println(v)
-		}
-	*/
+	}
 }
 
 // FileParser Интерфейс для возможного кастомного парсера.
 type FileParser interface {
-	GetDatabasesFromMigrations(migrationPath string) ([]Database, error)
+	GetDatabasesFromMigrations(migrationPath string) ([]model.Database, error)
+}
+
+type TableManager interface {
+	ManageTableByUser(dbs []model.Database) error
+}
+
+type TemplaterManager interface {
+	CreateDBModel(database *model.Database) error
 }
