@@ -83,7 +83,7 @@ package main
 // 		return err
 // 	}
 //
-// 	var models []ExampleModel
+// 	var model []ExampleModel
 // 	for rows.Next() {
 // 		var model ExampleModel
 // 		err = rows.Scan(userStruct.Addr(&model)...) // userStruct.Addr(&model)... -> возвращает слайс указателей на поля структуры
@@ -91,10 +91,10 @@ package main
 // 			return err
 // 		}
 //
-// 		models = append(models, model)
+// 		model = append(model, model)
 // 	}
 //
-// 	for _, v := range models {
+// 	for _, v := range model {
 // 		fmt.Println(v.ID)
 // 	}
 //

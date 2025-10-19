@@ -1,4 +1,4 @@
-package main
+package mysql
 
 import (
 	"bytes"
@@ -8,10 +8,16 @@ import (
 	"regexp"
 	"strings"
 
+	"generatorFromMigrations/model"
 	"go.uber.org/zap"
 )
 
-func NewParser(migrationPath string, logger *zap.Logger) FileParser {
+type Parser struct {
+	migrationPath string
+	logger        *zap.Logger
+}
+
+func NewParser(migrationPath string, logger *zap.Logger) *Parser {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -19,32 +25,30 @@ func NewParser(migrationPath string, logger *zap.Logger) FileParser {
 	return &Parser{migrationPath: migrationPath, logger: logger}
 }
 
-type Parser struct {
-	migrationPath string
-	logger        *zap.Logger
-}
-
-func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]Database, error) {
+func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]model.Database, error) {
 	p.logger.Debug("GetDatabasesFromMigrations called", zap.String("migrationPath", migrationPath))
 	paths, err := p.GetPaths(migrationPath)
 	if err != nil {
 		p.logger.Debug("GetPaths error", zap.Error(err))
+
 		return nil, err
 	}
 
-	var databases []Database
+	var databases []model.Database
 	for _, path := range paths {
 		p.logger.Debug("Processing migration file", zap.String("path", path))
 		var fileInfo []byte
 		fileInfo, err = os.ReadFile(path)
 		if err != nil {
 			p.logger.Debug("os.ReadFile error", zap.Error(err), zap.String("path", path))
+
 			return nil, err
 		}
 
 		TableName, err := p.GetTableName(fileInfo)
 		if err != nil {
 			p.logger.Debug("GetTableName error", zap.Error(err))
+
 			return nil, err
 		}
 		p.logger.Debug("Parsed table name", zap.Any("TableName", TableName))
@@ -52,12 +56,13 @@ func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]Database, e
 		columns, err := p.GetColumns(fileInfo)
 		if err != nil {
 			p.logger.Debug("GetColumns error", zap.Error(err))
+
 			return nil, err
 		}
 		p.logger.Debug("Parsed columns", zap.Any("columns", columns))
 
-		databases = append(databases, Database{
-			TableNames: TableNames{
+		databases = append(databases, model.Database{
+			TableNames: model.TableNames{
 				CamelCase: TableName.CamelCase,
 				Original:  TableName.Original,
 			},
@@ -67,10 +72,12 @@ func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]Database, e
 
 	if len(databases) == 0 {
 		p.logger.Debug("No databases found in migrations")
-		return nil, ErrMigrationNotFound
+
+		return nil, model.ErrMigrationNotFound
 	}
 
 	p.logger.Debug("Successfully parsed databases", zap.Int("count", len(databases)))
+
 	return databases, nil
 }
 
@@ -80,7 +87,7 @@ const (
 	minLenToEnums                = 2
 )
 
-func (p *Parser) GetColumns(fileInfo []byte) ([]Column, error) {
+func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, error) {
 	p.logger.Debug("GetColumns called")
 
 	lines := bytes.Lines(fileInfo)
@@ -89,7 +96,7 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]Column, error) {
 	reEnum := regexp.MustCompile(`\(([^)]*)\)`)
 	reDefault := regexp.MustCompile(`(?i)DEFAULT\s+(['"]?[\w\s]*['"]?)`)
 
-	var columns []Column
+	var columns []model.Column
 	var currentLine int
 
 	for line := range lines {
@@ -106,7 +113,7 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]Column, error) {
 
 		p.logger.Debug("line after trim", zap.ByteString("trimmedLine", line))
 
-		var column Column
+		var column model.Column
 		matches := reColumn.FindAllSubmatch(line, -1)
 		if len(matches) < lenMatchesToParseNameAndType {
 			p.logger.Debug("Line does not match expected column format, skipping", zap.Int("lineNumber", currentLine))
@@ -114,7 +121,7 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]Column, error) {
 			continue
 		}
 
-		columnType, ok := ReverseSupportedTypes[string(bytes.ToLower(matches[1][0]))]
+		columnType, ok := model.ReverseSupportedTypes[string(bytes.ToLower(matches[1][0]))]
 		if !ok {
 			p.logger.Debug("Unsupported column type found, skipping",
 				zap.String("type", string(matches[1][0])),
@@ -177,13 +184,14 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]Column, error) {
 	return columns, nil
 }
 
-func (p *Parser) GetTableName(file []byte) (TableNames, error) {
+func (p *Parser) GetTableName(file []byte) (model.TableNames, error) {
 	p.logger.Debug("GetTableName called")
 	patternTableName := `(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)`
 	reTableName, err := regexp.Compile(patternTableName)
 	if err != nil {
 		p.logger.Debug("regexp.Compile error", zap.Error(err))
-		return TableNames{}, fmt.Errorf("failed get structure name: %w", err)
+
+		return model.TableNames{}, fmt.Errorf("failed get structure name: %w", err)
 	}
 
 	finded := reTableName.FindString(string(file))
@@ -194,10 +202,32 @@ func (p *Parser) GetTableName(file []byte) (TableNames, error) {
 
 	p.logger.Debug("Extracted table name", zap.String("tableName", tableName))
 
-	return TableNames{
+	return model.TableNames{
 		CamelCase: p.toCamelCase(tableName),
 		Original:  tableName,
 	}, nil
+}
+
+func (p *Parser) GetPaths(migration string) ([]string, error) {
+	p.logger.Debug("GetPaths called", zap.String("migration", migration))
+	pattern := fmt.Sprintf("%s/*.sql", migration)
+
+	paths, err := filepath.Glob(pattern)
+	if err != nil {
+		p.logger.Debug("filepath.Glob error", zap.Error(err))
+
+		return nil, fmt.Errorf("error finding migrations: %w", err)
+	}
+
+	if len(paths) == 0 {
+		p.logger.Debug("No migration files found", zap.String("pattern", pattern))
+
+		return nil, model.ErrMigrationNotFound
+	}
+
+	p.logger.Debug("Found migration files", zap.Int("count", len(paths)))
+
+	return paths, nil
 }
 
 func (p *Parser) toCamelCase(snakeCase string) string {
@@ -211,24 +241,4 @@ func (p *Parser) toCamelCase(snakeCase string) string {
 	}
 
 	return strings.Join(names, "")
-
-}
-
-func (p *Parser) GetPaths(migration string) ([]string, error) {
-	p.logger.Debug("GetPaths called", zap.String("migration", migration))
-	pattern := fmt.Sprintf("%s/*.sql", migration)
-
-	paths, err := filepath.Glob(pattern)
-	if err != nil {
-		p.logger.Debug("filepath.Glob error", zap.Error(err))
-		return nil, fmt.Errorf("error finding migrations: %w", err)
-	}
-
-	if len(paths) == 0 {
-		p.logger.Debug("No migration files found", zap.String("pattern", pattern))
-		return nil, ErrMigrationNotFound
-	}
-
-	p.logger.Debug("Found migration files", zap.Int("count", len(paths)))
-	return paths, nil
 }
