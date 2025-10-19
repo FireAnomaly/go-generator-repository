@@ -31,6 +31,7 @@ type {{.ModelName}} struct {
 
 // Файл со сгенерированной моделью будет называться как оригинальное имя таблицы с суффиксом _model.go,
 // В то время как имя структуры будет в CamelCase формате.
+// А вот имя пакета нужно делать в соответствии с папкой, куда сохраняется файл.
 
 type Field struct {
 	Name string
@@ -71,7 +72,7 @@ func (t *Templater) CreateDBModel(database *model.Database) error {
 		ModelName   string
 		Fields      []Field
 	}{
-		PackageName: database.TableNames.Original + "_model", // Можно сделать динамическим
+		PackageName: "output", // Можно сделать динамическим
 		ModelName:   database.TableNames.CamelCase,
 		Fields:      fields,
 	}
