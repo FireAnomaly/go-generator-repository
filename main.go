@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 
@@ -37,7 +38,10 @@ func main() {
 	}
 
 	savePath := os.Stdout.Name() + *savePathInput
-	migrationPath := os.Stdout.Name() + *migrationPathInput
+	migrationPath := os.Stderr.Name() + *migrationPathInput
+
+	fmt.Println("Migration Path:", migrationPath)
+	fmt.Println("Save Path:", savePath)
 
 	logger := zap.NewNop()
 
