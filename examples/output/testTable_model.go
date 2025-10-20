@@ -1,6 +1,8 @@
 package output
 
-import "time"
+import (
+	"time"
+)
 
 type TestTable struct {
 	Id                 int       `db:"id"`

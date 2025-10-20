@@ -1,7 +1,5 @@
 package output
 
-import "time"
-
 type TestTable2 struct {
 	Id                 int       `db:"id"`
 	TestText           string    `db:"TestText"`

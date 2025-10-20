@@ -2,10 +2,12 @@ package templater
 
 import (
 	"os"
+	"strings"
 	"text/template"
 
-	"generatorFromMigrations/model"
 	"go.uber.org/zap"
+
+	"generatorFromMigrations/model"
 )
 
 type Templater struct {
@@ -39,7 +41,7 @@ type Field struct {
 	Tags string
 }
 
-func (t *Templater) CreateDBModel(database *model.Database) error {
+func (t *Templater) CreateDBModel(database *model.Database, savePath string) error {
 	t.logger.Info("Start creating model...", zap.String("database", database.TableNames.Original))
 
 	templ, err := template.New(database.TableNames.CamelCase).Parse(modelTemplate)
@@ -67,17 +69,19 @@ func (t *Templater) CreateDBModel(database *model.Database) error {
 		fields = append(fields, field)
 	}
 
+	packageName := strings.Split(savePath, "/")[len(strings.Split(savePath, "/"))-1]
+
 	data := struct {
 		PackageName string
 		ModelName   string
 		Fields      []Field
 	}{
-		PackageName: "output", // Можно сделать динамическим
+		PackageName: packageName, // fixme Можно сделать динамическим
 		ModelName:   database.TableNames.CamelCase,
 		Fields:      fields,
 	}
 
-	file, err := os.Create("examples/output/" + database.TableNames.Original + "_model.go")
+	file, err := os.Create(savePath + database.TableNames.Original + "_model.go")
 	if err != nil {
 		t.logger.Error("Failed to create file", zap.Error(err))
 

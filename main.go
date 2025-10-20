@@ -1,12 +1,22 @@
 package main
 
 import (
+	"flag"
+	"log"
+	"os"
+
+	_ "github.com/go-sql-driver/mysql"
+	"go.uber.org/zap"
+
 	"generatorFromMigrations/cli"
 	"generatorFromMigrations/model"
 	"generatorFromMigrations/parsers/mysql"
 	"generatorFromMigrations/templater"
-	_ "github.com/go-sql-driver/mysql"
-	"go.uber.org/zap"
+)
+
+var (
+	migrationPathInput = flag.String("in", "", "Path to the migration files")
+	savePathInput      = flag.String("out", "", "Path to save generated models")
 )
 
 var (
@@ -16,13 +26,23 @@ var (
 )
 
 func main() {
-	//logger, _ := zap.NewDevelopment()
+	// logger, _ := zap.NewDevelopment()
+	flag.Parse()
+	if migrationPathInput == nil || *migrationPathInput == "" {
+		log.Fatal("Migration path is required")
+	}
+
+	if savePathInput == nil || *savePathInput == "" {
+		log.Fatal("Save path is required")
+	}
+
+	savePath := os.Stdout.Name() + *savePathInput
+	migrationPath := os.Stdout.Name() + *migrationPathInput
+
 	logger := zap.NewNop()
 
-	migration := "examples"
-
-	parser = mysql.NewParser(migration, logger)
-	databases, err := parser.GetDatabasesFromMigrations(migration)
+	parser = mysql.NewParser(migrationPath, logger)
+	databases, err := parser.GetDatabasesFromMigrations(migrationPath)
 	if err != nil {
 		logger.Fatal("Failed to get migrations", zap.Error(err))
 		panic(err)
@@ -37,7 +57,7 @@ func main() {
 
 	templateManager = templater.NewTemplater(logger)
 	for _, db := range databases {
-		err = templateManager.CreateDBModel(&db)
+		err = templateManager.CreateDBModel(&db, savePath)
 		if err != nil {
 			logger.Fatal("Failed to create DB model", zap.Error(err))
 			panic(err)
@@ -55,5 +75,5 @@ type TableManager interface {
 }
 
 type TemplaterManager interface {
-	CreateDBModel(database *model.Database) error
+	CreateDBModel(database *model.Database, savePath string) error
 }
