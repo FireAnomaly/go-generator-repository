@@ -76,12 +76,12 @@ func (t *Templater) CreateDBModel(database *model.Database, savePath string) err
 		ModelName   string
 		Fields      []Field
 	}{
-		PackageName: packageName, // fixme Можно сделать динамическим
+		PackageName: packageName,
 		ModelName:   database.TableNames.CamelCase,
 		Fields:      fields,
 	}
 
-	file, err := os.Create(savePath + database.TableNames.Original + "_model.go")
+	file, err := os.Create(savePath + "/" + database.TableNames.Original + "_model.go")
 	if err != nil {
 		t.logger.Error("Failed to create file", zap.Error(err))
 

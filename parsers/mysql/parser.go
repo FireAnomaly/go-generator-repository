@@ -53,7 +53,7 @@ func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]model.Datab
 		}
 		p.logger.Debug("Parsed table name", zap.Any("TableName", TableName))
 
-		columns, err := p.GetColumns(fileInfo)
+		columns, failedColumns, err := p.GetColumns(fileInfo)
 		if err != nil {
 			p.logger.Debug("GetColumns error", zap.Error(err))
 
@@ -66,7 +66,8 @@ func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]model.Datab
 				CamelCase: TableName.CamelCase,
 				Original:  TableName.Original,
 			},
-			Columns: columns,
+			Columns:            columns,
+			FailedParseColumns: failedColumns,
 		})
 	}
 
@@ -87,7 +88,7 @@ const (
 	minLenToEnums                = 2
 )
 
-func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, error) {
+func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, []model.FailedParsedColumn, error) {
 	p.logger.Debug("GetColumns called")
 
 	lines := bytes.Lines(fileInfo)
@@ -96,8 +97,11 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, error) {
 	reEnum := regexp.MustCompile(`\(([^)]*)\)`)
 	reDefault := regexp.MustCompile(`(?i)DEFAULT\s+(['"]?[\w\s]*['"]?)`)
 
-	var columns []model.Column
-	var currentLine int
+	var (
+		columns       []model.Column
+		currentLine   int
+		failedColumns []model.FailedParsedColumn
+	)
 
 	for line := range lines {
 		currentLine++
@@ -116,6 +120,12 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, error) {
 		var column model.Column
 		matches := reColumn.FindAllSubmatch(line, -1)
 		if len(matches) < lenMatchesToParseNameAndType {
+			failedColumns = append(failedColumns, model.FailedParsedColumn{
+				OriginalName:  "none",
+				CamelCaseName: "none",
+				LineNumber:    currentLine,
+				Reason:        fmt.Errorf("line does not match expected column format"),
+			})
 			p.logger.Warn("Line does not match expected column format, skipping", zap.Int("lineNumber", currentLine))
 
 			continue
@@ -123,6 +133,12 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, error) {
 
 		columnType, ok := model.ReverseSupportedTypes[string(bytes.ToLower(matches[1][0]))]
 		if !ok {
+			failedColumns = append(failedColumns, model.FailedParsedColumn{
+				OriginalName:  string(matches[0][0]),
+				CamelCaseName: p.toCamelCase(string(matches[0][0])),
+				LineNumber:    currentLine,
+				Reason:        fmt.Errorf("unsupported column type: %s", string(matches[1][0])),
+			})
 			p.logger.Error("Unsupported column type found, skipping",
 				zap.String("type", string(matches[1][0])),
 				zap.Int("lineNumber", currentLine))
@@ -142,6 +158,12 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, error) {
 		if strings.ToLower(column.Type) == "enum" {
 			enums := reEnum.FindSubmatch(line)
 			if len(enums) < minLenToEnums {
+				failedColumns = append(failedColumns, model.FailedParsedColumn{
+					OriginalName:  column.OriginalName,
+					CamelCaseName: column.CamelCaseName,
+					LineNumber:    currentLine,
+					Reason:        fmt.Errorf("enum type found but no values present"),
+				})
 				p.logger.Debug("Enum type found but no values present, skipping",
 					zap.String("column", column.OriginalName),
 					zap.Int("lineNumber", currentLine))
@@ -160,11 +182,7 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, error) {
 
 		// Проверка на unsigned для целочисленных типов
 		if len(matches) > minimumLineLengthToHaveUint {
-			isUint := false
 			if bytes.Equal(bytes.ToLower(matches[2][0]), []byte(`unsigned`)) {
-				isUint = true
-			}
-			if isUint {
 				column.Type = "uint"
 			}
 		}
@@ -182,7 +200,7 @@ func (p *Parser) GetColumns(fileInfo []byte) ([]model.Column, error) {
 
 	p.logger.Debug("GetColumns finished", zap.Int("columnsCount", len(columns)))
 
-	return columns, nil
+	return columns, failedColumns, nil
 }
 
 func (p *Parser) GetTableName(file []byte) (model.TableNames, error) {

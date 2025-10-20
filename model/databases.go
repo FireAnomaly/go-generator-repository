@@ -9,8 +9,9 @@ var (
 )
 
 type Database struct {
-	TableNames TableNames
-	Columns    []Column
+	TableNames         TableNames
+	Columns            []Column
+	FailedParseColumns []FailedParsedColumn
 }
 
 type TableNames struct {
@@ -30,6 +31,13 @@ type Column struct {
 
 func (c *Column) IsEnum() bool {
 	return c.Type == "enum"
+}
+
+type FailedParsedColumn struct {
+	OriginalName  string
+	CamelCaseName string
+	LineNumber    int
+	Reason        error
 }
 
 // SupportedTypes содержит поддерживаемые типы данных и их синонимы - При парсинге приводить к нижнему регистру.

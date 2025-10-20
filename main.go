@@ -37,8 +37,13 @@ func main() {
 		log.Fatal("Save path is required")
 	}
 
-	savePath := os.Stdout.Name() + *savePathInput
-	migrationPath := os.Stderr.Name() + *migrationPathInput
+	workDir, err := os.Getwd()
+	if err != nil {
+		log.Fatal("Failed to get working directory:", err)
+	}
+
+	savePath := workDir + "/" + *savePathInput
+	migrationPath := workDir + "/" + *migrationPathInput
 
 	fmt.Println("Migration Path:", migrationPath)
 	fmt.Println("Save Path:", savePath)

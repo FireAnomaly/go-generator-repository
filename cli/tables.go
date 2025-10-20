@@ -52,8 +52,9 @@ func NewTableWriterOnCLI(logger *zap.Logger) *TableWriterOnCLI {
 }
 
 var (
-	tableHeadersForDatabases = []any{"Original Name", "CamelCased Name", "Number of Columns"}
-	tableHeadersForColumns   = []any{"Column Name", "Data Type", "Is Null", "Default Value", "Enum Values"}
+	tableHeadersForDatabases     = []any{"Original Name", "CamelCased Name", "Number of Columns"}
+	tableHeadersForFailedColumns = []any{"Original Name", "CamelCased Name", "Line Number", "Reason"}
+	tableHeadersForColumns       = []any{"Column Name", "Data Type", "Is Null", "Default Value", "Enum Values"}
 )
 
 func (cli *TableWriterOnCLI) ManageTableByUser(dbs []model.Database) error {
@@ -129,6 +130,37 @@ func (cli *TableWriterOnCLI) WriteTableColumns(db model.Database) error {
 			zap.Error(err))
 
 		return err
+	}
+
+	tableWithFails := cli.newTable()
+	tableWithFails.Header(tableHeadersForFailedColumns...)
+
+	for _, failedColumn := range db.FailedParseColumns {
+		if err := tableWithFails.Append([]any{
+			failedColumn.OriginalName,
+			failedColumn.CamelCaseName,
+			failedColumn.LineNumber,
+			failedColumn.Reason}); err != nil {
+			cli.logger.Error("Failed to write table for failed parsed columns",
+				zap.String("table", db.TableNames.Original),
+				zap.Error(err))
+
+			return err
+		}
+	}
+
+	if len(db.FailedParseColumns) > 0 {
+		cli.logger.Info("There were failed parsed columns for table",
+			zap.String("table", db.TableNames.Original),
+			zap.Int("failed_count", len(db.FailedParseColumns)))
+
+		if err := tableWithFails.Render(); err != nil {
+			cli.logger.Error("Failed to render table for failed parsed columns",
+				zap.String("table", db.TableNames.Original),
+				zap.Error(err))
+
+			return err
+		}
 	}
 
 	return nil
