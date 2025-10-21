@@ -107,7 +107,7 @@ func (t *Templater) CreateDBModel(database *model.Database, savePath string) err
 }
 
 const (
-	templateText = "package {{.PackageName}} \n"
+	templateText = "package {{.PackageName}} \n \n"
 )
 
 type builderData struct {
@@ -125,23 +125,27 @@ func buildTemplate(d *builderData) string {
 	tmpl := templateText
 
 	if d.hasTimePackage {
-		tmpl += "import \"time\" \n"
+		tmpl += "import \"time\" \n \n"
 	}
 
 	tmpl += `type {{.ModelName}} struct {
 {{- range .Fields}}
     {{.Name}} {{.Type}} ` + "`{{.Tags}}`" + `
 {{- end}}
-}`
+} ` + "\n"
 
 	if d.hasCustomTypes {
 		for typeName, typeInfo := range d.CustomTypes {
+			tmpl += "type {{.typeName}} {{.ParentType}} \n\n" +
+				"const (\n {{- range .Values}} \n {{}}" // fixme fuck this shit
+
 			tmpl += "\ntype " + typeName + " " + typeInfo.ParentType + " \n\n"
 			tmpl += "const (\n"
 			for _, value := range typeInfo.Values {
 				tmpl += "    " + typeName + value + " " + typeName + " = \"" + value + "\"\n"
 			}
-			tmpl += ")\n"
+			tmpl += ")\n \n"
+
 		}
 	}
 
