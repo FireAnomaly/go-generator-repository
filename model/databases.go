@@ -29,6 +29,10 @@ type Column struct {
 	IsFailed      error
 }
 
+func (c *Column) IsTime() bool {
+	return c.Type == "time.Time"
+}
+
 func (c *Column) IsEnum() bool {
 	return c.Type == "enum"
 }
@@ -66,6 +70,9 @@ var SupportedTypes = map[string][]string{
 	},
 	"time.Time": {
 		"date", "datetime", "timestamp", "time", "year",
+	},
+	"[]byte": {
+		"blob", "tinyblob", "mediumblob", "longblob", "binary", "varbinary", "json",
 	},
 }
 
@@ -114,6 +121,13 @@ var ReverseSupportedTypes = map[string]string{
 	"timestamp":          "time.Time",
 	"time":               "time.Time",
 	"year":               "time.Time",
+	"blob":               "[]byte",
+	"tinyblob":           "[]byte",
+	"mediumblob":         "[]byte",
+	"longblob":           "[]byte",
+	"binary":             "[]byte",
+	"varbinary":          "[]byte",
+	"json":               "[]byte",
 }
 
 // Поведение при Enum

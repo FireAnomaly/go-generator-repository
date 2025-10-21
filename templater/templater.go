@@ -22,15 +22,6 @@ func NewTemplater(logger *zap.Logger) *Templater {
 	return &Templater{logger: logger.Named("Templater")}
 }
 
-var modelTemplate = `package {{.PackageName}}
-
-type {{.ModelName}} struct {
-{{- range .Fields}}
-    {{.Name}} {{.Type}} ` + "`{{.Tags}}`" + `
-{{- end}}
-}
-`
-
 // Файл со сгенерированной моделью будет называться как оригинальное имя таблицы с суффиксом _model.go,
 // В то время как имя структуры будет в CamelCase формате.
 // А вот имя пакета нужно делать в соответствии с папкой, куда сохраняется файл.
@@ -44,21 +35,25 @@ type Field struct {
 func (t *Templater) CreateDBModel(database *model.Database, savePath string) error {
 	t.logger.Info("Start creating model...", zap.String("database", database.TableNames.Original))
 
-	templ, err := template.New(database.TableNames.CamelCase).Parse(modelTemplate)
-	if err != nil {
-		t.logger.Error("Failed to parse template", zap.Error(err))
-
-		return err
-	}
-
 	var fields []Field
+	customTypes := make(map[string]customType)
+	hasCustomTypes := false
+	isHaveTimePackage := false
 
 	for _, column := range database.Columns {
 		if column.IsEnum() {
-			t.logger.Warn("Skipping enum column for model generation, so set him like string",
-				zap.String("column", column.OriginalName))
+			t.logger.Debug("Column is enum type", zap.String("column", column.OriginalName))
+			hasCustomTypes = true
+			customTypes[column.OriginalName] = customType{
+				ParentType: "string",
+				Values:     column.EnumValues,
+			}
 
-			column.Type = "string"
+			column.Type = column.CamelCaseName
+		}
+
+		if column.IsTime() {
+			isHaveTimePackage = true
 		}
 
 		field := Field{
@@ -88,6 +83,19 @@ func (t *Templater) CreateDBModel(database *model.Database, savePath string) err
 		return err
 	}
 
+	format := buildTemplate(&builderData{
+		hasTimePackage: isHaveTimePackage,
+		hasCustomTypes: hasCustomTypes,
+		CustomTypes:    customTypes,
+	})
+
+	templ, err := template.New(database.TableNames.CamelCase).Parse(format)
+	if err != nil {
+		t.logger.Error("Failed to parse template", zap.Error(err))
+
+		return err
+	}
+
 	err = templ.Execute(file, data)
 	if err != nil {
 		t.logger.Error("Failed to execute template", zap.Error(err))
@@ -96,4 +104,46 @@ func (t *Templater) CreateDBModel(database *model.Database, savePath string) err
 	}
 
 	return nil
+}
+
+const (
+	templateText = "package {{.PackageName}} \n"
+)
+
+type builderData struct {
+	hasTimePackage bool
+	hasCustomTypes bool
+	CustomTypes    map[string]customType
+}
+
+type customType struct {
+	ParentType string
+	Values     []string
+}
+
+func buildTemplate(d *builderData) string {
+	tmpl := templateText
+
+	if d.hasTimePackage {
+		tmpl += "import \"time\" \n"
+	}
+
+	tmpl += `type {{.ModelName}} struct {
+{{- range .Fields}}
+    {{.Name}} {{.Type}} ` + "`{{.Tags}}`" + `
+{{- end}}
+}`
+
+	if d.hasCustomTypes {
+		for typeName, typeInfo := range d.CustomTypes {
+			tmpl += "\ntype " + typeName + " " + typeInfo.ParentType + " \n\n"
+			tmpl += "const (\n"
+			for _, value := range typeInfo.Values {
+				tmpl += "    " + typeName + value + " " + typeName + " = \"" + value + "\"\n"
+			}
+			tmpl += ")\n"
+		}
+	}
+
+	return tmpl
 }

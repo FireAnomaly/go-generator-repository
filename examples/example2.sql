@@ -8,6 +8,5 @@ CREATE TABLE IF NOT EXISTS testTable2
     TestBoolButTinyInt TINYINT(1) DEFAULT 0,
     TestDate DATE,
     TestUnique TEXT UNIQUE,
-    TestForeign INT,
-    TestEnum ENUM('Value1', 'Value2', 'Value3') DEFAULT 'Value1'
+    TestForeign INT
 );

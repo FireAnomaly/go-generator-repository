@@ -9,5 +9,6 @@ CREATE TABLE IF NOT EXISTS testTable
     TestDate DATE,
     TestUnique TEXT UNIQUE,
     TestForeign INT,
+    TestJSON JSON,
     TestEnum ENUM('Value1', 'Value2', 'Value3') DEFAULT 'Value1'
 );
