@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"fmt"
 	"os"
+	"time"
 
+	"atomicgo.dev/keyboard"
+	"atomicgo.dev/keyboard/keys"
 	"generatorFromMigrations/model"
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
@@ -52,54 +56,104 @@ func NewTableWriterOnCLI(logger *zap.Logger) *TableWriterOnCLI {
 }
 
 var (
-	tableHeadersForDatabases     = []any{"Original Name", "CamelCased Name", "Number of Columns"}
 	tableHeadersForFailedColumns = []any{"Original Name", "CamelCased Name", "Line Number", "Reason"}
 	tableHeadersForColumns       = []any{"Column Name", "Data Type", "Is Null", "Default Value", "Enum Values"}
 )
 
 func (cli *TableWriterOnCLI) ManageTableByUser(dbs []model.Database) error {
 	cli.logger.Debug("Start ManageTableByUser on CLI")
+
+	databases := map[string]model.Database{}
 	for _, db := range dbs {
-		if err := cli.WriteTableDatabase(db); err != nil {
-			cli.logger.Error("Failed to write database table", zap.Error(err))
-
-			return err
-		}
-
-		if err := cli.WriteTableColumns(db); err != nil {
-			cli.logger.Error("Failed to write columns table", zap.Error(err))
-
-			return err
-		}
+		databases[db.TableNames.Original] = db
 	}
 
-	return nil
+	userChoice := make(chan string)
+
+	go func() {
+		cli.UserGetDB(dbs, userChoice)
+	}()
+
+	choice := <-userChoice
+
+	println(choice)
+	panic("stop")
+
 }
 
-func (cli *TableWriterOnCLI) WriteTableDatabase(db model.Database) error {
+func (cli *TableWriterOnCLI) UserGetDB(dbs []model.Database, userInput chan string) {
+	select {
+	case <-time.After(30 * time.Second):
+		cli.logger.Warn("UserGetDB timeout")
+
+		return
+
+	default:
+		cli.printDBs(dbs)
+
+		var input string
+		cli.logger.Info("Please enter the original name of the database you want to view columns for:")
+		_, _ = fmt.Scanln(&input)
+
+		userInput <- input
+	}
+}
+
+func (cli *TableWriterOnCLI) calculateMoves() {
+	cli.logger.Debug("Start CalculateMoves on CLI")
+	keyboard.Listen(func(key keys.Key) (stop bool, err error) {
+		switch key.Code {
+		case keys.CtrlC, keys.Escape:
+			return true, nil // Return true to stop listener
+		case keys.Up:
+			fmt.Println("\rYou pressed the Up arrow key")
+		case keys.Down:
+			fmt.Println("\rYou pressed the Down arrow key")
+		case keys.Left:
+			fmt.Println("\rYou pressed the Left arrow key")
+		case keys.Right:
+			fmt.Println("\rYou pressed the Right arrow key")
+		// case keys.RuneKey: // Check if key is a rune key (a, b, c, 1, 2, 3, ...)
+		// 	if key.String() == "q" { // Check if key is "q"
+		// 		fmt.Println("\rQuitting application")
+		// 		os.Exit(0) // Exit application
+		// 	}
+		//
+		// 	fmt.Printf("\rYou pressed the rune key: %s\n", key)
+		default:
+			fmt.Printf("\rYou pressed: %s\n", key)
+		}
+
+		return false, nil // Return false to continue listening
+	})
+}
+
+func (cli *TableWriterOnCLI) printDBs(dbs []model.Database) {
 	cli.logger.Debug("Start WriteTable on CLI for databases")
 
 	table := cli.newTable()
 
-	table.Header(tableHeadersForDatabases...)
+	table.Header([]any{"Num", "Original Name", "CamelCased Name", "Number of Columns"})
 
-	if err := table.Append([]any{
-		db.TableNames.Original,
-		db.TableNames.CamelCase,
-		len(db.Columns),
-	}); err != nil {
-		cli.logger.Error("Failed to write table database", zap.Error(err))
+	num := 1
+	for _, v := range dbs {
+		if err := table.Append([]any{
+			num,
+			v.TableNames.Original,
+			v.TableNames.CamelCase,
+			len(v.Columns),
+		}); err != nil {
+			cli.logger.Error("Failed to write table database", zap.Error(err))
+		}
 
-		return err
+		num++
 	}
 
 	if err := table.Render(); err != nil {
 		cli.logger.Error("Failed to render table", zap.Error(err))
-
-		return err
 	}
 
-	return nil
+	return
 }
 
 func (cli *TableWriterOnCLI) WriteTableColumns(db model.Database) error {

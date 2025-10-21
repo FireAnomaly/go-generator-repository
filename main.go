@@ -57,7 +57,8 @@ func main() {
 		panic(err)
 	}
 
-	tableManager = cli.NewTableWriterOnCLI(logger)
+	// tableManager = cli.NewTableWriterOnCLI(logger)
+	tableManager = cli.NewTview()
 	err = tableManager.ManageTableByUser(databases)
 	if err != nil {
 		logger.Fatal("Failed to manage table by user", zap.Error(err))
