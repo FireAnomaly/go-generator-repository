@@ -8,11 +8,12 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
-	"generatorFromMigrations/cli"
-	"generatorFromMigrations/model"
-	"generatorFromMigrations/parsers/mysql"
-	"generatorFromMigrations/templater"
+	"github.com/FireAnomaly/go-generator-repository/cli"
+	"github.com/FireAnomaly/go-generator-repository/model"
+	"github.com/FireAnomaly/go-generator-repository/parsers/mysql"
+	"github.com/FireAnomaly/go-generator-repository/templater"
 )
 
 var (
@@ -27,7 +28,11 @@ var (
 )
 
 func main() {
-	// logger, _ := zap.NewDevelopment()
+	logger, err := NewLogger()
+	if err != nil {
+		log.Fatal("Failed to create logger:", err)
+	}
+	logger = zap.NewNop()
 	flag.Parse()
 	if migrationPathInput == nil || *migrationPathInput == "" {
 		log.Fatal("Migration path is required")
@@ -39,7 +44,7 @@ func main() {
 
 	workDir, err := os.Getwd()
 	if err != nil {
-		log.Fatal("Failed to get working directory:", err)
+		logger.Fatal("Failed to get working directory", zap.Error(err))
 	}
 
 	savePath := workDir + "/" + *savePathInput
@@ -48,8 +53,6 @@ func main() {
 	fmt.Println("Migration Path:", migrationPath)
 	fmt.Println("Save Path:", savePath)
 
-	logger := zap.NewNop()
-
 	parser = mysql.NewParser(migrationPath, logger)
 	databases, err := parser.GetDatabasesFromMigrations(migrationPath)
 	if err != nil {
@@ -57,8 +60,8 @@ func main() {
 		panic(err)
 	}
 
-	// tableManager = cli.NewTableWriterOnCLI(logger)
-	tableManager = cli.NewTview()
+	tableManager = cli.NewTableWriterOnCLI(logger)
+	// tableManager = cli.NewTview()
 	err = tableManager.ManageTableByUser(databases)
 	if err != nil {
 		logger.Fatal("Failed to manage table by user", zap.Error(err))
@@ -86,4 +89,10 @@ type TableManager interface {
 
 type TemplaterManager interface {
 	CreateDBModel(database *model.Database, savePath string) error
+}
+
+func NewLogger() (*zap.Logger, error) {
+	config := zap.NewDevelopmentConfig()
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	return config.Build()
 }

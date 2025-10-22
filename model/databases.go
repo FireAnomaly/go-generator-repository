@@ -36,6 +36,7 @@ type Column struct {
 	DefaultValue  any
 	EnumValues    []string
 	IsNull        bool
+	// IsDisable     bool fixme // Нужно ли это?
 }
 
 func (c *Column) IsTime() bool {

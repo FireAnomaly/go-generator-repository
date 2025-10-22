@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"generatorFromMigrations/model"
+	"github.com/FireAnomaly/go-generator-repository/model"
 )
 
 type Templater struct {

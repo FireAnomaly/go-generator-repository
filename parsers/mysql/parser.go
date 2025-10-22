@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"generatorFromMigrations/model"
+	"github.com/FireAnomaly/go-generator-repository/model"
 	"go.uber.org/zap"
 )
 

@@ -1,13 +1,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"time"
+	"strconv"
 
-	"atomicgo.dev/keyboard"
-	"atomicgo.dev/keyboard/keys"
-	"generatorFromMigrations/model"
+	"github.com/FireAnomaly/go-generator-repository/model"
+	"github.com/FireAnomaly/go-keyboard-capture"
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
@@ -68,80 +68,101 @@ func (cli *TableWriterOnCLI) ManageTableByUser(dbs []model.Database) error {
 		databases[db.TableNames.Original] = db
 	}
 
-	userChoice := make(chan string)
+	cli.UserGetDB(dbs)
 
-	go func() {
-		cli.UserGetDB(dbs, userChoice)
-	}()
-
-	choice := <-userChoice
-
-	println(choice)
 	panic("stop")
 
 }
 
-func (cli *TableWriterOnCLI) UserGetDB(dbs []model.Database, userInput chan string) {
-	select {
-	case <-time.After(30 * time.Second):
-		cli.logger.Warn("UserGetDB timeout")
+func (cli *TableWriterOnCLI) UserGetDB(dbs []model.Database) {
+	events := make(chan keyboard.KeyEvent)
+	userStop := make(chan bool)
 
-		return
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	default:
-		cli.printDBs(dbs)
+	go func() {
+		cli.captureKeyboard(ctx, events, userStop)
+	}()
 
-		var input string
-		cli.logger.Info("Please enter the original name of the database you want to view columns for:")
-		_, _ = fmt.Scanln(&input)
+	table := cli.newTable()
+	cli.streamDBsTable(table, dbs) // Initial render
+	// defer func(table *tablewriter.Table) {
+	// 	err := table.Close()
+	// 	if err != nil {
+	// 		cli.logger.Error("Failed to close table", zap.Error(err))
+	// 	}
+	// }(table)
+	//
+	// if err := table.Start(); err != nil {
+	// 	cli.logger.Fatal("Failed to start table streaming", zap.Error(err))
+	// }
 
-		userInput <- input
+	for {
+		select {
+		case <-userStop:
+			cli.logger.Info("User requested to stop table management")
+			cancel()
+
+			return
+		case <-events:
+			cli.streamDBsTable(table, dbs)
+		}
 	}
 }
 
-func (cli *TableWriterOnCLI) calculateMoves() {
-	cli.logger.Debug("Start CalculateMoves on CLI")
-	keyboard.Listen(func(key keys.Key) (stop bool, err error) {
-		switch key.Code {
-		case keys.CtrlC, keys.Escape:
-			return true, nil // Return true to stop listener
-		case keys.Up:
-			fmt.Println("\rYou pressed the Up arrow key")
-		case keys.Down:
-			fmt.Println("\rYou pressed the Down arrow key")
-		case keys.Left:
-			fmt.Println("\rYou pressed the Left arrow key")
-		case keys.Right:
-			fmt.Println("\rYou pressed the Right arrow key")
-		// case keys.RuneKey: // Check if key is a rune key (a, b, c, 1, 2, 3, ...)
-		// 	if key.String() == "q" { // Check if key is "q"
-		// 		fmt.Println("\rQuitting application")
-		// 		os.Exit(0) // Exit application
-		// 	}
-		//
-		// 	fmt.Printf("\rYou pressed the rune key: %s\n", key)
-		default:
-			fmt.Printf("\rYou pressed: %s\n", key)
+func (cli *TableWriterOnCLI) captureKeyboard(ctx context.Context, events chan keyboard.KeyEvent, userStop chan bool) {
+	cli.logger.Debug("Start captureKeyboard on CLI")
+
+	err := keyboard.CaptureKeyboard(ctx, events)
+	if err != nil {
+		cli.logger.Error("Failed to capture keyboard", zap.Error(err))
+		panic(err)
+	}
+
+	for event := range events {
+		if event.Key == 'q' {
+			cli.logger.Info("Quit keyboard captured")
+			userStop <- true
+
+			break
 		}
 
-		return false, nil // Return false to continue listening
-	})
+		if event.Key == 'c' {
+			events <- event
+		}
+
+		if event.Code == keyboard.KeyUpArrow {
+			events <- event
+			// fmt.Println("Up Arrow Pressed")
+		}
+
+		if event.Code == keyboard.KeyDownArrow {
+			events <- event
+			// fmt.Println("Down Arrow Pressed")
+		}
+
+	}
+
+	return
 }
 
-func (cli *TableWriterOnCLI) printDBs(dbs []model.Database) {
+func (cli *TableWriterOnCLI) streamDBsTable(table *tablewriter.Table, dbs []model.Database) {
 	cli.logger.Debug("Start WriteTable on CLI for databases")
 
-	table := cli.newTable()
+	// println("")
 
-	table.Header([]any{"Num", "Original Name", "CamelCased Name", "Number of Columns"})
+	fmt.Print("\r")
+
+	table.Header([]string{"Num", "Original Name", "CamelCased Name", "Number of Columns"})
 
 	num := 1
 	for _, v := range dbs {
-		if err := table.Append([]any{
-			num,
+		if err := table.Append([]string{
+			strconv.Itoa(num),
 			v.TableNames.Original,
 			v.TableNames.CamelCase,
-			len(v.Columns),
+			strconv.Itoa(len(v.Columns)),
 		}); err != nil {
 			cli.logger.Error("Failed to write table database", zap.Error(err))
 		}
@@ -149,9 +170,7 @@ func (cli *TableWriterOnCLI) printDBs(dbs []model.Database) {
 		num++
 	}
 
-	if err := table.Render(); err != nil {
-		cli.logger.Error("Failed to render table", zap.Error(err))
-	}
+	table.Render()
 
 	return
 }
@@ -159,7 +178,7 @@ func (cli *TableWriterOnCLI) printDBs(dbs []model.Database) {
 func (cli *TableWriterOnCLI) WriteTableColumns(db model.Database) error {
 	cli.logger.Debug("Start WriteTable on CLI for columns", zap.String("table", db.TableNames.Original))
 
-	table := cli.newTable()
+	table := cli.newTableWithStream()
 
 	table.Header(tableHeadersForColumns...)
 
@@ -186,7 +205,7 @@ func (cli *TableWriterOnCLI) WriteTableColumns(db model.Database) error {
 		return err
 	}
 
-	tableWithFails := cli.newTable()
+	tableWithFails := cli.newTableWithStream()
 	tableWithFails.Header(tableHeadersForFailedColumns...)
 
 	for _, failedColumn := range db.FailedParseColumns {
@@ -230,8 +249,27 @@ func (cli *TableWriterOnCLI) newTable() *tablewriter.Table {
 				ColMaxWidths: tw.CellWidth{Global: 25},
 			},
 			Footer: tw.CellConfig{
+				Alignment: tw.CellAlignment{Global: tw.AlignCenter},
+			},
+		}),
+	)
+}
+
+func (cli *TableWriterOnCLI) newTableWithStream() *tablewriter.Table {
+	return tablewriter.NewTable(os.Stdout,
+		tablewriter.WithRenderer(renderer.NewColorized(cli.colorCfg)),
+		tablewriter.WithConfig(tablewriter.Config{
+			Row: tw.CellConfig{
+				Formatting:   tw.CellFormatting{AutoWrap: tw.WrapNormal}, // Wrap long content
+				Alignment:    tw.CellAlignment{Global: tw.AlignLeft},     // Left-align rows
+				ColMaxWidths: tw.CellWidth{Global: 25},
+			},
+			Footer: tw.CellConfig{
 				Alignment: tw.CellAlignment{Global: tw.AlignRight},
 			},
+		}),
+		tablewriter.WithStreaming(tw.StreamConfig{
+			Enable: true,
 		}),
 	)
 }
