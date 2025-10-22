@@ -32,48 +32,62 @@ type Field struct {
 	Tags string
 }
 
-func (t *Templater) CreateDBModel(database *model.Database, savePath string) error {
-	t.logger.Info("Start creating model...", zap.String("database", database.TableNames.Original))
+type CustomType struct {
+	Name       string
+	ParentType string
+	Values     []string
+}
 
-	var fields []Field
-	customTypes := make(map[string]customType)
-	hasCustomTypes := false
-	isHaveTimePackage := false
+func (t *Templater) ParseColumnsToFields(columns []model.Column) ([]Field, []CustomType) {
+	fields := make([]Field, 0, len(columns))
+	customTypes := make([]CustomType, 0, cap(columns))
 
-	for _, column := range database.Columns {
+	for _, column := range columns {
 		if column.IsEnum() {
 			t.logger.Debug("Column is enum type", zap.String("column", column.OriginalName))
-			hasCustomTypes = true
-			customTypes[column.OriginalName] = customType{
+
+			customTypes = append(customTypes, CustomType{
+				Name:       column.CamelCaseName,
 				ParentType: "string",
 				Values:     column.EnumValues,
-			}
+			})
 
 			column.Type = column.CamelCaseName
-		}
-
-		if column.IsTime() {
-			isHaveTimePackage = true
 		}
 
 		field := Field{
 			Name: column.CamelCaseName,
 			Type: column.Type,
-			Tags: `db:"` + column.OriginalName + `"`,
+			Tags: t.GetTags(column),
 		}
 		fields = append(fields, field)
 	}
 
+	return fields, customTypes
+}
+
+func (t *Templater) GetTags(column model.Column) string {
+	return `db:"` + column.OriginalName + `"`
+}
+
+func (t *Templater) CreateDBModel(database *model.Database, savePath string) error {
+	t.logger.Info("Start creating model...", zap.String("database", database.TableNames.Original))
+	fields, customTypes := t.ParseColumnsToFields(database.Columns)
+
 	packageName := strings.Split(savePath, "/")[len(strings.Split(savePath, "/"))-1]
 
 	data := struct {
-		PackageName string
-		ModelName   string
-		Fields      []Field
+		PackageName    string
+		ModelName      string
+		Fields         []Field
+		HasTimePackage bool
+		CustomTypes    []CustomType
 	}{
-		PackageName: packageName,
-		ModelName:   database.TableNames.CamelCase,
-		Fields:      fields,
+		PackageName:    packageName,
+		ModelName:      database.TableNames.CamelCase,
+		Fields:         fields,
+		HasTimePackage: database.IsHaveTime(),
+		CustomTypes:    customTypes,
 	}
 
 	file, err := os.Create(savePath + "/" + database.TableNames.Original + "_model.go")
@@ -83,13 +97,7 @@ func (t *Templater) CreateDBModel(database *model.Database, savePath string) err
 		return err
 	}
 
-	format := buildTemplate(&builderData{
-		hasTimePackage: isHaveTimePackage,
-		hasCustomTypes: hasCustomTypes,
-		CustomTypes:    customTypes,
-	})
-
-	templ, err := template.New(database.TableNames.CamelCase).Parse(format)
+	templ, err := template.New(database.TableNames.CamelCase).Parse(templateText)
 	if err != nil {
 		t.logger.Error("Failed to parse template", zap.Error(err))
 
@@ -107,47 +115,29 @@ func (t *Templater) CreateDBModel(database *model.Database, savePath string) err
 }
 
 const (
-	templateText = "package {{.PackageName}} \n \n"
-)
+	templateText = `package {{.PackageName}} 
 
-type builderData struct {
-	hasTimePackage bool
-	hasCustomTypes bool
-	CustomTypes    map[string]customType
+{{if .HasTimePackage}}import "time"
+{{end}} 
+
+type {{.ModelName}} struct {
+{{- range .Fields}}
+    {{.Name}} {{.Type}} ` + "`{{.Tags}}`" + `
+{{- end}}
 }
+
+{{- range .CustomTypes}}
+type {{.Name}} {{.ParentType}}
+
+const (
+{{- range .Values}}
+    {{.Name}}{{.}} {{.Name}} = "{{.}}"
+{{- end}}
+)
+{{end}}`
+)
 
 type customType struct {
 	ParentType string
 	Values     []string
-}
-
-func buildTemplate(d *builderData) string {
-	tmpl := templateText
-
-	if d.hasTimePackage {
-		tmpl += "import \"time\" \n \n"
-	}
-
-	tmpl += `type {{.ModelName}} struct {
-{{- range .Fields}}
-    {{.Name}} {{.Type}} ` + "`{{.Tags}}`" + `
-{{- end}}
-} ` + "\n"
-
-	if d.hasCustomTypes {
-		for typeName, typeInfo := range d.CustomTypes {
-			tmpl += "type {{.typeName}} {{.ParentType}} \n\n" +
-				"const (\n {{- range .Values}} \n {{}}" // fixme fuck this shit
-
-			tmpl += "\ntype " + typeName + " " + typeInfo.ParentType + " \n\n"
-			tmpl += "const (\n"
-			for _, value := range typeInfo.Values {
-				tmpl += "    " + typeName + value + " " + typeName + " = \"" + value + "\"\n"
-			}
-			tmpl += ")\n \n"
-
-		}
-	}
-
-	return tmpl
 }

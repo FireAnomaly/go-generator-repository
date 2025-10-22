@@ -14,6 +14,16 @@ type Database struct {
 	FailedParseColumns []FailedParsedColumn
 }
 
+func (d *Database) IsHaveTime() bool {
+	for _, col := range d.Columns {
+		if col.IsTime() {
+			return true
+		}
+	}
+
+	return false
+}
+
 type TableNames struct {
 	CamelCase string
 	Original  string
@@ -26,7 +36,6 @@ type Column struct {
 	DefaultValue  any
 	EnumValues    []string
 	IsNull        bool
-	IsFailed      error
 }
 
 func (c *Column) IsTime() bool {
