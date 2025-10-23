@@ -1,13 +1,14 @@
 package cli
 
 import (
-	"context"
-	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 
+	"atomicgo.dev/keyboard"
+	"atomicgo.dev/keyboard/keys"
 	"github.com/FireAnomaly/go-generator-repository/model"
-	"github.com/FireAnomaly/go-keyboard-capture"
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
@@ -74,103 +75,73 @@ func (cli *TableWriterOnCLI) ManageTableByUser(dbs []model.Database) error {
 
 }
 
+var clearConsole map[string]func() // create a map for storing clearConsole funcs
+
+func init() {
+	clearConsole = make(map[string]func()) // Initialize it
+	clearConsole["linux"] = func() {
+		cmd := exec.Command("clear") // Linux example, its tested
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+	clearConsole["windows"] = func() {
+		cmd := exec.Command("cmd", "/c", "cls") // Windows example, its tested
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+}
+
+func CallClearConsole() {
+	value, ok := clearConsole[runtime.GOOS] // runtime.GOOS -> linux, windows, darwin etc.
+	if ok {                                 // if we defined a clearConsole func for that platyform:
+		value() // we execute it
+	} else { // unsupported platform
+		panic("Your platform is unsupported! I can't clearConsole terminal screen :(")
+	}
+}
+
 func (cli *TableWriterOnCLI) UserGetDB(dbs []model.Database) {
-	events := make(chan keyboard.KeyEvent)
-	userStop := make(chan bool)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		cli.captureKeyboard(ctx, events, userStop)
-	}()
-
-	table := cli.newTable()
-	cli.streamDBsTable(table, dbs) // Initial render
-	// defer func(table *tablewriter.Table) {
-	// 	err := table.Close()
-	// 	if err != nil {
-	// 		cli.logger.Error("Failed to close table", zap.Error(err))
-	// 	}
-	// }(table)
-	//
-	// if err := table.Start(); err != nil {
-	// 	cli.logger.Fatal("Failed to start table streaming", zap.Error(err))
-	// }
-
-	for {
-		select {
-		case <-userStop:
-			cli.logger.Info("User requested to stop table management")
-			cancel()
-
-			return
-		case <-events:
-			cli.streamDBsTable(table, dbs)
+	CallClearConsole()
+	cli.writeTable(dbs)
+	keyboard.Listen(func(key keys.Key) (stop bool, err error) {
+		CallClearConsole()
+		switch key.Code {
+		case keys.Down:
+			cli.writeTable(dbs)
+			return false, nil
+		case keys.Up:
+			cli.writeTable(dbs)
+			return false, nil
+		case keys.CtrlC:
+			CallClearConsole()
+			return true, nil
 		}
-	}
+
+		return false, nil
+	})
 }
 
-func (cli *TableWriterOnCLI) captureKeyboard(ctx context.Context, events chan keyboard.KeyEvent, userStop chan bool) {
-	cli.logger.Debug("Start captureKeyboard on CLI")
-
-	err := keyboard.CaptureKeyboard(ctx, events)
-	if err != nil {
-		cli.logger.Error("Failed to capture keyboard", zap.Error(err))
-		panic(err)
-	}
-
-	for event := range events {
-		if event.Key == 'q' {
-			cli.logger.Info("Quit keyboard captured")
-			userStop <- true
-
-			break
-		}
-
-		if event.Key == 'c' {
-			events <- event
-		}
-
-		if event.Code == keyboard.KeyUpArrow {
-			events <- event
-			// fmt.Println("Up Arrow Pressed")
-		}
-
-		if event.Code == keyboard.KeyDownArrow {
-			events <- event
-			// fmt.Println("Down Arrow Pressed")
-		}
-
-	}
-
-	return
-}
-
-func (cli *TableWriterOnCLI) streamDBsTable(table *tablewriter.Table, dbs []model.Database) {
+func (cli *TableWriterOnCLI) writeTable(dbs []model.Database) {
 	cli.logger.Debug("Start WriteTable on CLI for databases")
 
-	// println("")
-
-	fmt.Print("\r")
-
-	table.Header([]string{"Num", "Original Name", "CamelCased Name", "Number of Columns"})
+	t := cli.setTable()
+	t.Header([]string{"Num", "Original Name", "CamelCased Name", "Number of Columns"})
 
 	num := 1
 	for _, v := range dbs {
-		if err := table.Append([]string{
+		if err := t.Append([]string{
 			strconv.Itoa(num),
 			v.TableNames.Original,
 			v.TableNames.CamelCase,
 			strconv.Itoa(len(v.Columns)),
 		}); err != nil {
-			cli.logger.Error("Failed to write table database", zap.Error(err))
+			cli.logger.Error("Failed to write t database", zap.Error(err))
 		}
 
 		num++
 	}
 
-	table.Render()
+	t.Render()
 
 	return
 }
@@ -239,9 +210,8 @@ func (cli *TableWriterOnCLI) WriteTableColumns(db model.Database) error {
 	return nil
 }
 
-func (cli *TableWriterOnCLI) newTable() *tablewriter.Table {
-	return tablewriter.NewTable(os.Stdout,
-		tablewriter.WithRenderer(renderer.NewColorized(cli.colorCfg)),
+func (cli *TableWriterOnCLI) setTable() *tablewriter.Table {
+	return tablewriter.NewTable(os.Stdout, tablewriter.WithRenderer(renderer.NewColorized(cli.colorCfg)),
 		tablewriter.WithConfig(tablewriter.Config{
 			Row: tw.CellConfig{
 				Formatting:   tw.CellFormatting{AutoWrap: tw.WrapNormal}, // Wrap long content
@@ -251,8 +221,7 @@ func (cli *TableWriterOnCLI) newTable() *tablewriter.Table {
 			Footer: tw.CellConfig{
 				Alignment: tw.CellAlignment{Global: tw.AlignCenter},
 			},
-		}),
-	)
+		}))
 }
 
 func (cli *TableWriterOnCLI) newTableWithStream() *tablewriter.Table {

@@ -3,7 +3,6 @@ module github.com/FireAnomaly/go-generator-repository
 go 1.25.1
 
 require (
-	github.com/FireAnomaly/go-keyboard-capture v1.0.8
 	github.com/fatih/color v1.18.0
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/olekukonko/tablewriter v1.1.0
@@ -11,8 +10,10 @@ require (
 )
 
 require (
+	atomicgo.dev/keyboard v0.2.9 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
+	github.com/containerd/console v1.0.3 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
