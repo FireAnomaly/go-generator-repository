@@ -136,8 +136,3 @@ const (
 )
 {{end}}`
 )
-
-type customType struct {
-	ParentType string
-	Values     []string
-}

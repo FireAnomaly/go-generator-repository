@@ -4,22 +4,19 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
+	"strings"
 
 	"atomicgo.dev/keyboard"
 	"atomicgo.dev/keyboard/keys"
 	"github.com/FireAnomaly/go-generator-repository/model"
-	"github.com/fatih/color"
-	"github.com/olekukonko/tablewriter"
-	"github.com/olekukonko/tablewriter/renderer"
-	"github.com/olekukonko/tablewriter/tw"
+	"github.com/aws/smithy-go/ptr"
+	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/jedib0t/go-pretty/v6/text"
 	"go.uber.org/zap"
 )
 
 type TableWriterOnCLI struct {
 	logger *zap.Logger
-
-	colorCfg renderer.ColorizedConfig
 }
 
 func NewTableWriterOnCLI(logger *zap.Logger) *TableWriterOnCLI {
@@ -27,52 +24,13 @@ func NewTableWriterOnCLI(logger *zap.Logger) *TableWriterOnCLI {
 		logger = zap.NewNop()
 	}
 
-	// Configure colors: green headers, cyan/magenta rows, yellow footer
-	colorCfg := renderer.ColorizedConfig{
-		Header: renderer.Tint{
-			FG: renderer.Colors{color.FgGreen, color.Bold}, // Green bold headers
-			BG: renderer.Colors{color.BgBlack},
-		},
-		Column: renderer.Tint{
-			FG: renderer.Colors{color.FgCyan}, // Default cyan for rows
-			Columns: []renderer.Tint{
-				{FG: renderer.Colors{color.FgMagenta}}, // Magenta for column 0
-				{},                                     // Inherit default (cyan)
-				{FG: renderer.Colors{color.FgHiRed}},   // High-intensity red for column 2
-			},
-		},
-		Footer: renderer.Tint{
-			FG: renderer.Colors{color.FgYellow, color.Bold}, // Yellow bold footer
-			Columns: []renderer.Tint{
-				{},                                      // Inherit default
-				{FG: renderer.Colors{color.FgHiYellow}}, // High-intensity yellow for column 1
-				{},                                      // Inherit default
-			},
-		},
-		Border:    renderer.Tint{FG: renderer.Colors{color.FgWhite}}, // White borders
-		Separator: renderer.Tint{FG: renderer.Colors{color.FgWhite}}, // White separators
-	}
-
-	return &TableWriterOnCLI{logger: logger.Named("CLI Table Writer: "), colorCfg: colorCfg}
+	return &TableWriterOnCLI{logger: logger.Named("CLI Table Writer: ")}
 }
-
-var (
-	tableHeadersForFailedColumns = []any{"Original Name", "CamelCased Name", "Line Number", "Reason"}
-	tableHeadersForColumns       = []any{"Column Name", "Data Type", "Is Null", "Default Value", "Enum Values"}
-)
 
 func (cli *TableWriterOnCLI) ManageTableByUser(dbs []model.Database) error {
 	cli.logger.Debug("Start ManageTableByUser on CLI")
 
-	databases := map[string]model.Database{}
-	for _, db := range dbs {
-		databases[db.TableNames.Original] = db
-	}
-
-	cli.UserGetDB(dbs)
-
-	panic("stop")
-
+	return cli.manageWriters(dbs)
 }
 
 var clearConsole map[string]func() // create a map for storing clearConsole funcs
@@ -91,7 +49,7 @@ func init() {
 	}
 }
 
-func CallClearConsole() {
+func (cli *TableWriterOnCLI) clearConsole() {
 	value, ok := clearConsole[runtime.GOOS] // runtime.GOOS -> linux, windows, darwin etc.
 	if ok {                                 // if we defined a clearConsole func for that platyform:
 		value() // we execute it
@@ -100,45 +58,161 @@ func CallClearConsole() {
 	}
 }
 
-func (cli *TableWriterOnCLI) UserGetDB(dbs []model.Database) {
-	CallClearConsole()
-	cli.writeTable(dbs)
-	keyboard.Listen(func(key keys.Key) (stop bool, err error) {
-		CallClearConsole()
-		switch key.Code {
-		case keys.Down:
-			cli.writeTable(dbs)
-			return false, nil
-		case keys.Up:
-			cli.writeTable(dbs)
-			return false, nil
-		case keys.CtrlC:
-			CallClearConsole()
-			return true, nil
+func (cli *TableWriterOnCLI) manageWriters(dbs []model.Database) error {
+	for {
+		chosenDB, err := cli.choiceDataBase(dbs)
+		if err != nil {
+			return err
 		}
 
-		return false, nil
+		if chosenDB.isWannaExit {
+			return nil
+		}
+
+		if chosenDB.isNeedToManageCols {
+			if err = cli.choiceColumns(dbs[chosenDB.selectedRow-1]); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+type resultOfChoisenDatabase struct {
+	isWannaExit        bool
+	isNeedToManageCols bool
+	selectedRow        int
+}
+
+func (cli *TableWriterOnCLI) choiceDataBase(dbs []model.Database) (resultOfChoisenDatabase, error) {
+	var result resultOfChoisenDatabase
+
+	selectedRow := minRows
+	rows := len(dbs)
+
+	writeDescriptor := cli.writeDescriptor(selectedRow, rows)
+	cli.writeTable(writeDescriptor.SelectedRow, dbs)
+
+	err := keyboard.Listen(func(key keys.Key) (stop bool, err error) {
+		switch key.Code {
+		case keys.Down:
+			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow+1, len(dbs))
+			cli.writeTable(writeDescriptor.SelectedRow, dbs)
+
+			return false, nil
+
+		case keys.Up:
+			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow-1, len(dbs))
+			cli.writeTable(writeDescriptor.SelectedRow, dbs)
+
+			return false, nil
+
+		case keys.Right:
+			result.isNeedToManageCols = true
+			result.selectedRow = selectedRow
+
+			return true, nil
+
+		case keys.CtrlC:
+			result.isWannaExit = true
+
+			return true, nil
+
+		default:
+			return false, nil
+		}
+	})
+	if err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
+func (cli *TableWriterOnCLI) choiceColumns(db model.Database) error {
+	selectedRow := minRows
+	rows := len(db.Columns)
+
+	writeDescriptor := cli.writeDescriptor(selectedRow, rows)
+	cli.writeTableColumns(writeDescriptor.SelectedRow, db)
+
+	return keyboard.Listen(func(key keys.Key) (stop bool, err error) {
+		switch key.Code {
+		case keys.Down:
+			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow+1, rows)
+			cli.writeTableColumns(writeDescriptor.SelectedRow, db)
+
+			return false, nil
+
+		case keys.Up:
+			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow-1, rows)
+			cli.writeTableColumns(writeDescriptor.SelectedRow, db)
+
+			return false, nil
+
+		case keys.Left:
+			return true, nil
+
+		case keys.CtrlC:
+			return true, nil
+
+		default:
+			return false, nil
+		}
 	})
 }
 
-func (cli *TableWriterOnCLI) writeTable(dbs []model.Database) {
-	cli.logger.Debug("Start WriteTable on CLI for databases")
+type toWrite struct {
+	MaxRows     int
+	MinRows     int
+	Message     *string
+	SelectedRow int
+}
 
-	t := cli.setTable()
-	t.Header([]string{"Num", "Original Name", "CamelCased Name", "Number of Columns"})
+const minRows = 1 // really? :)
 
-	num := 1
-	for _, v := range dbs {
-		if err := t.Append([]string{
-			strconv.Itoa(num),
-			v.TableNames.Original,
-			v.TableNames.CamelCase,
-			strconv.Itoa(len(v.Columns)),
-		}); err != nil {
-			cli.logger.Error("Failed to write t database", zap.Error(err))
-		}
+func (cli *TableWriterOnCLI) writeDescriptor(selectedRow int, countRows int) toWrite {
+	writer := toWrite{
+		MaxRows:     countRows,
+		MinRows:     minRows,
+		Message:     nil,
+		SelectedRow: selectedRow,
+	}
 
-		num++
+	if selectedRow < minRows {
+		writer.Message = ptr.String("Already at the top row")
+		writer.SelectedRow = minRows
+	}
+
+	if selectedRow > countRows {
+		writer.Message = ptr.String("Already at the bottom row")
+		writer.SelectedRow = countRows
+	}
+
+	return writer
+}
+
+func (cli *TableWriterOnCLI) writeTable(selectedRow int, dbs []model.Database) {
+	cli.logger.Debug("Start writeTable")
+
+	cli.clearConsole()
+
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Original Name", "CamelCased Name", "Line Number"})
+
+	currentRow := 1
+	for _, db := range dbs {
+		t.AppendRow(table.Row{db.TableNames.Original, db.TableNames.CamelCase, len(db.Columns)})
+		t.AppendSeparator()
+
+		t.SetRowPainter(func(row table.Row, attr table.RowAttributes) text.Colors {
+			if attr.Number == selectedRow {
+				return text.Colors{text.FgGreen}
+			}
+
+			return text.Colors{text.FgWhite}
+		})
+		currentRow++
 	}
 
 	t.Render()
@@ -146,99 +220,38 @@ func (cli *TableWriterOnCLI) writeTable(dbs []model.Database) {
 	return
 }
 
-func (cli *TableWriterOnCLI) WriteTableColumns(db model.Database) error {
-	cli.logger.Debug("Start WriteTable on CLI for columns", zap.String("table", db.TableNames.Original))
+func (cli *TableWriterOnCLI) writeTableColumns(selectedRow int, db model.Database) {
+	cli.logger.Debug("Start writeTableColumns")
 
-	table := cli.newTableWithStream()
+	cli.clearConsole()
 
-	table.Header(tableHeadersForColumns...)
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Original Name", "CamelCased Name", "Type", "DefaultValue", "EnumValues", "IsNull"})
 
+	currentRow := 1
 	for _, column := range db.Columns {
-		if err := table.Append([]any{
+		t.AppendRow(table.Row{
 			column.OriginalName,
+			column.CamelCaseName,
 			column.Type,
-			column.IsNull,
 			column.DefaultValue,
-			column.EnumValues}); err != nil {
-			cli.logger.Error("Failed to write table column",
-				zap.String("table", db.TableNames.Original),
-				zap.Error(err))
+			strings.Join(column.EnumValues, ", "),
+			column.IsNull,
+		})
+		t.AppendSeparator()
 
-			return err
-		}
+		t.SetRowPainter(func(row table.Row, attr table.RowAttributes) text.Colors {
+			if attr.Number == selectedRow {
+				return text.Colors{text.FgGreen}
+			}
+
+			return text.Colors{text.FgWhite}
+		})
+		currentRow++
 	}
 
-	if err := table.Render(); err != nil {
-		cli.logger.Error("Failed to render table",
-			zap.String("table", db.TableNames.Original),
-			zap.Error(err))
+	t.Render()
 
-		return err
-	}
-
-	tableWithFails := cli.newTableWithStream()
-	tableWithFails.Header(tableHeadersForFailedColumns...)
-
-	for _, failedColumn := range db.FailedParseColumns {
-		if err := tableWithFails.Append([]any{
-			failedColumn.OriginalName,
-			failedColumn.CamelCaseName,
-			failedColumn.LineNumber,
-			failedColumn.Reason}); err != nil {
-			cli.logger.Error("Failed to write table for failed parsed columns",
-				zap.String("table", db.TableNames.Original),
-				zap.Error(err))
-
-			return err
-		}
-	}
-
-	if len(db.FailedParseColumns) > 0 {
-		cli.logger.Info("There were failed parsed columns for table",
-			zap.String("table", db.TableNames.Original),
-			zap.Int("failed_count", len(db.FailedParseColumns)))
-
-		if err := tableWithFails.Render(); err != nil {
-			cli.logger.Error("Failed to render table for failed parsed columns",
-				zap.String("table", db.TableNames.Original),
-				zap.Error(err))
-
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (cli *TableWriterOnCLI) setTable() *tablewriter.Table {
-	return tablewriter.NewTable(os.Stdout, tablewriter.WithRenderer(renderer.NewColorized(cli.colorCfg)),
-		tablewriter.WithConfig(tablewriter.Config{
-			Row: tw.CellConfig{
-				Formatting:   tw.CellFormatting{AutoWrap: tw.WrapNormal}, // Wrap long content
-				Alignment:    tw.CellAlignment{Global: tw.AlignLeft},     // Left-align rows
-				ColMaxWidths: tw.CellWidth{Global: 25},
-			},
-			Footer: tw.CellConfig{
-				Alignment: tw.CellAlignment{Global: tw.AlignCenter},
-			},
-		}))
-}
-
-func (cli *TableWriterOnCLI) newTableWithStream() *tablewriter.Table {
-	return tablewriter.NewTable(os.Stdout,
-		tablewriter.WithRenderer(renderer.NewColorized(cli.colorCfg)),
-		tablewriter.WithConfig(tablewriter.Config{
-			Row: tw.CellConfig{
-				Formatting:   tw.CellFormatting{AutoWrap: tw.WrapNormal}, // Wrap long content
-				Alignment:    tw.CellAlignment{Global: tw.AlignLeft},     // Left-align rows
-				ColMaxWidths: tw.CellWidth{Global: 25},
-			},
-			Footer: tw.CellConfig{
-				Alignment: tw.CellAlignment{Global: tw.AlignRight},
-			},
-		}),
-		tablewriter.WithStreaming(tw.StreamConfig{
-			Enable: true,
-		}),
-	)
+	return
 }

@@ -3,15 +3,17 @@ module github.com/FireAnomaly/go-generator-repository
 go 1.25.1
 
 require (
+	atomicgo.dev/keyboard v0.2.9
 	github.com/fatih/color v1.18.0
 	github.com/go-sql-driver/mysql v1.9.3
+	github.com/jedib0t/go-pretty/v6 v6.6.8
 	github.com/olekukonko/tablewriter v1.1.0
 	go.uber.org/zap v1.27.0
 )
 
 require (
-	atomicgo.dev/keyboard v0.2.9 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/aws/smithy-go v1.23.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/containerd/console v1.0.3 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
@@ -24,4 +26,5 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/term v0.36.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 )
