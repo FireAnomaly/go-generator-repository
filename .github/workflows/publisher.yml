@@ -27,6 +27,15 @@ jobs:
       - name: Build
         run: go build -o go-generator-repo
 
+      - name: Releaser Action
+        uses: goreleaser/goreleaser-action@v4
+        with:
+          version: latest
+          args: release --rm-dist
+        env:
+          GORELEASER_CURRENT_TAG: ${{ env.latest_tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Get latest tag
         id: get_tag
         run: |
