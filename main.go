@@ -21,6 +21,7 @@ var (
 	savePathInput      = flag.String("out", "", "Path to save generated models")
 	isGraphicInput     = flag.Bool("graphic", false, "Whether or not to use graphic")
 	isLogOutput        = flag.Bool("log", false, "Enable detailed logging")
+	logLevel           = zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set the logging level")
 )
 
 var (
@@ -101,6 +102,7 @@ type TemplaterManager interface {
 
 func NewLogger() (*zap.Logger, error) {
 	config := zap.NewDevelopmentConfig()
+	config.Level.SetLevel(*logLevel)
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	return config.Build()
 }
