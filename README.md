@@ -58,9 +58,12 @@ Enable detailed logs with `-log` flag. Uses [uber-go/zap](https://github.com/ube
 ## ToDos
 
 -[ ] Get functional to graphic interface (now is only to show)
+
 -[ ] Upgrade templater to support more complex relationships
 - Like to other tables (foreign keys), many to many, etc.
+  
 -[ ] Upgrade parser to support more SQL dialects
+
 -[ ] Upgrade custom types that templater can generate
 - Add relation with other models in your project, like ToModel() and FromModel()
 
@@ -71,3 +74,4 @@ MIT
 
 
 ---
+
