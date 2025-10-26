@@ -1,17 +1,22 @@
-name: Build and Release
+name: Auto Release
 
 on:
   push:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
-  build-and-release:
+  release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # нужно, чтобы теги были доступны
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -21,16 +26,18 @@ jobs:
       - name: Build
         run: go build -o go-generator-repo
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.sha }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+          echo "latest_tag=$latest_tag" >> $GITHUB_ENV
 
-      - name: Upload Release Asset
-        uses: softprops/action-gh-release@v2
-        with:
-          files: go-generator-repo
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Bump version
+        id: bump
+        run: |
+          latest=${{ env.latest_tag }}
+          # Удаляем 'v' и парсим числа
+          version=${latest#v}
+          major=$(echo $version | cut -d. -f1)
+          minor=$(echo $version | cut -d. -f2)
