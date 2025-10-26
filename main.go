@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"os"
 
@@ -59,8 +58,7 @@ func main() {
 	savePath := workDir + "/" + *savePathInput
 	migrationPath := workDir + "/" + *migrationPathInput
 
-	fmt.Println("Migration Path:", migrationPath)
-	fmt.Println("Save Path:", savePath)
+	logger.Info("Paths ", zap.String("migration", migrationPath), zap.String("save", savePath))
 
 	parser = mysql.NewParser(migrationPath, logger)
 	databases, err := parser.GetDatabasesFromMigrations(migrationPath)

@@ -26,7 +26,7 @@ func NewParser(migrationPath string, logger *zap.Logger) *Parser {
 }
 
 func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]model.Database, error) {
-	p.logger.Debug("GetDatabasesFromMigrations called", zap.String("migrationPath", migrationPath))
+	p.logger.Info("Parse migrations", zap.String("migrationPath", migrationPath))
 	paths, err := p.GetPaths(migrationPath)
 	if err != nil {
 		p.logger.Debug("GetPaths error", zap.Error(err))
@@ -36,7 +36,7 @@ func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]model.Datab
 
 	var databases []model.Database
 	for _, path := range paths {
-		p.logger.Debug("Processing migration file", zap.String("path", path))
+		p.logger.Info("Processing migration file", zap.String("path", path))
 		var fileInfo []byte
 		fileInfo, err = os.ReadFile(path)
 		if err != nil {
@@ -77,7 +77,7 @@ func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]model.Datab
 		return nil, model.ErrMigrationNotFound
 	}
 
-	p.logger.Debug("Successfully parsed databases", zap.Int("count", len(databases)))
+	p.logger.Info("Successfully parsed databases", zap.Int("count", len(databases)))
 
 	return databases, nil
 }
