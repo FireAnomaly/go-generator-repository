@@ -90,19 +90,19 @@ func (cli *TableWriterOnCLI) choiceDataBase(dbs []model.Database) (resultOfChois
 	rows := len(dbs)
 
 	writeDescriptor := cli.writeDescriptor(selectedRow, rows)
-	cli.writeTable(writeDescriptor.SelectedRow, dbs)
+	cli.writeTable(writeDescriptor, dbs)
 
 	err := keyboard.Listen(func(key keys.Key) (stop bool, err error) {
 		switch key.Code {
 		case keys.Down:
 			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow+1, len(dbs))
-			cli.writeTable(writeDescriptor.SelectedRow, dbs)
+			cli.writeTable(writeDescriptor, dbs)
 
 			return false, nil
 
 		case keys.Up:
 			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow-1, len(dbs))
-			cli.writeTable(writeDescriptor.SelectedRow, dbs)
+			cli.writeTable(writeDescriptor, dbs)
 
 			return false, nil
 
@@ -133,19 +133,19 @@ func (cli *TableWriterOnCLI) choiceColumns(db model.Database) error {
 	rows := len(db.Columns)
 
 	writeDescriptor := cli.writeDescriptor(selectedRow, rows)
-	cli.writeTableColumns(writeDescriptor.SelectedRow, db)
+	cli.writeTableColumns(writeDescriptor, db)
 
 	return keyboard.Listen(func(key keys.Key) (stop bool, err error) {
 		switch key.Code {
 		case keys.Down:
 			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow+1, rows)
-			cli.writeTableColumns(writeDescriptor.SelectedRow, db)
+			cli.writeTableColumns(writeDescriptor, db)
 
 			return false, nil
 
 		case keys.Up:
 			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow-1, rows)
-			cli.writeTableColumns(writeDescriptor.SelectedRow, db)
+			cli.writeTableColumns(writeDescriptor, db)
 
 			return false, nil
 
@@ -191,7 +191,7 @@ func (cli *TableWriterOnCLI) writeDescriptor(selectedRow int, countRows int) toW
 	return writer
 }
 
-func (cli *TableWriterOnCLI) writeTable(selectedRow int, dbs []model.Database) {
+func (cli *TableWriterOnCLI) writeTable(writeDescriptor toWrite, dbs []model.Database) {
 	cli.logger.Debug("Start writeTable")
 
 	cli.clearConsole()
@@ -206,7 +206,7 @@ func (cli *TableWriterOnCLI) writeTable(selectedRow int, dbs []model.Database) {
 		t.AppendSeparator()
 
 		t.SetRowPainter(func(row table.Row, attr table.RowAttributes) text.Colors {
-			if attr.Number == selectedRow {
+			if attr.Number == writeDescriptor.SelectedRow {
 				return text.Colors{text.FgGreen}
 			}
 
@@ -220,7 +220,7 @@ func (cli *TableWriterOnCLI) writeTable(selectedRow int, dbs []model.Database) {
 	return
 }
 
-func (cli *TableWriterOnCLI) writeTableColumns(selectedRow int, db model.Database) {
+func (cli *TableWriterOnCLI) writeTableColumns(writeDescriptor toWrite, db model.Database) {
 	cli.logger.Debug("Start writeTableColumns")
 
 	cli.clearConsole()
@@ -242,7 +242,7 @@ func (cli *TableWriterOnCLI) writeTableColumns(selectedRow int, db model.Databas
 		t.AppendSeparator()
 
 		t.SetRowPainter(func(row table.Row, attr table.RowAttributes) text.Colors {
-			if attr.Number == selectedRow {
+			if attr.Number == writeDescriptor.SelectedRow {
 				return text.Colors{text.FgGreen}
 			}
 
