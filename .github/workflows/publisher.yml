@@ -1,5 +1,6 @@
 name: Auto Release
 
+
 on:
   push:
     branches:
@@ -10,7 +11,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu-latest]
 
     steps:
       - name: Checkout
