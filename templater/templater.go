@@ -2,10 +2,12 @@ package templater
 
 import (
 	"os"
+	"strings"
 	"text/template"
 
-	"generatorFromMigrations/model"
 	"go.uber.org/zap"
+
+	"github.com/FireAnomaly/go-generator-repository/model"
 )
 
 type Templater struct {
@@ -17,21 +19,8 @@ func NewTemplater(logger *zap.Logger) *Templater {
 		logger = zap.NewNop()
 	}
 
-	return &Templater{logger: logger.Named("Templater")}
+	return &Templater{logger: logger.Named("Templater: ")}
 }
-
-var modelTemplate = `package {{.PackageName}}
-
-type {{.ModelName}} struct {
-{{- range .Fields}}
-    {{.Name}} {{.Type}} ` + "`{{.Tags}}`" + `
-{{- end}}
-}
-`
-
-// Файл со сгенерированной моделью будет называться как оригинальное имя таблицы с суффиксом _model.go,
-// В то время как имя структуры будет в CamelCase формате.
-// А вот имя пакета нужно делать в соответствии с папкой, куда сохраняется файл.
 
 type Field struct {
 	Name string
@@ -39,47 +28,84 @@ type Field struct {
 	Tags string
 }
 
-func (t *Templater) CreateDBModel(database *model.Database) error {
-	t.logger.Info("Start creating model...", zap.String("database", database.TableNames.Original))
+type CustomType struct {
+	Name       string
+	ParentType string
+	Values     []string
+}
 
-	templ, err := template.New(database.TableNames.CamelCase).Parse(modelTemplate)
-	if err != nil {
-		t.logger.Error("Failed to parse template", zap.Error(err))
+func (t *Templater) parseColumnsToFields(columns []model.Column) ([]Field, []CustomType) {
+	fields := make([]Field, 0, len(columns))
+	customTypes := make([]CustomType, 0, cap(columns))
 
-		return err
-	}
-
-	var fields []Field
-
-	for _, column := range database.Columns {
+	for _, column := range columns {
 		if column.IsEnum() {
-			t.logger.Warn("Skipping enum column for model generation, so set him like string",
-				zap.String("column", column.OriginalName))
+			t.logger.Debug("Column is enum type", zap.String("column", column.OriginalName))
 
-			column.Type = "string"
+			customTypes = append(customTypes, CustomType{
+				Name:       column.CamelCaseName,
+				ParentType: "string",
+				Values:     column.EnumValues,
+			})
+
+			column.Type = column.CamelCaseName
 		}
 
 		field := Field{
 			Name: column.CamelCaseName,
 			Type: column.Type,
-			Tags: `db:"` + column.OriginalName + `"`,
+			Tags: t.getTags(column),
 		}
 		fields = append(fields, field)
 	}
 
-	data := struct {
-		PackageName string
-		ModelName   string
-		Fields      []Field
-	}{
-		PackageName: "output", // Можно сделать динамическим
-		ModelName:   database.TableNames.CamelCase,
-		Fields:      fields,
+	return fields, customTypes
+}
+
+func (t *Templater) getTags(column model.Column) string {
+	return `db:"` + column.OriginalName + `"`
+}
+
+func (t *Templater) SaveModels(databases []model.Database, savePath string) error {
+	for _, db := range databases {
+		if err := t.saveModel(&db, savePath); err != nil {
+			return err
+		}
 	}
 
-	file, err := os.Create("examples/output/" + database.TableNames.Original + "_model.go")
+	return nil
+}
+
+func (t *Templater) saveModel(database *model.Database, savePath string) error {
+	t.logger.Info("Start creating model...", zap.String("database", database.TableNames.Original))
+	fields, customTypes := t.parseColumnsToFields(database.Columns)
+
+	packageName := strings.Split(savePath, "/")[len(strings.Split(savePath, "/"))-1]
+
+	data := struct {
+		PackageName    string
+		ModelName      string
+		Fields         []Field
+		HasTimePackage bool
+		CustomTypes    []CustomType
+	}{
+		PackageName:    packageName,
+		ModelName:      database.TableNames.CamelCase,
+		Fields:         fields,
+		HasTimePackage: database.IsHaveTime(),
+		CustomTypes:    customTypes,
+	}
+
+	file, err := os.Create(savePath + "/" + database.TableNames.Original + "_model.go")
 	if err != nil {
 		t.logger.Error("Failed to create file", zap.Error(err))
+
+		return err
+	}
+
+	templ, err := template.New(database.TableNames.CamelCase).Parse(templateText)
+	if err != nil {
+		t.logger.Error("Failed to parse template", zap.Error(err))
 
 		return err
 	}
@@ -93,3 +119,27 @@ func (t *Templater) CreateDBModel(database *model.Database) error {
 
 	return nil
 }
+
+const templateText = `package {{.PackageName}} 
+
+{{if .HasTimePackage}}
+import "time"
+{{end}} 
+
+type {{.ModelName}} struct {
+{{- range .Fields}}
+    {{.Name}} {{.Type}} ` + "`{{.Tags}}`" + `
+{{- end}}
+}
+
+{{- range .CustomTypes}}
+type {{.Name}} {{.ParentType}}
+
+const (
+{{- $typeName := .Name}}
+{{- range .Values}}
+    {{$typeName}}{{.}} {{$typeName}} = "{{.}}"
+{{- end}}
+)
+{{end}}
+`

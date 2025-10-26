@@ -12,5 +12,13 @@ type TestTable struct {
 	TestDate           time.Time `db:"TestDate"`
 	TestUnique         string    `db:"TestUnique"`
 	TestForeign        int       `db:"TestForeign"`
-	TestEnum           string    `db:"TestEnum"`
+	TestJSON           []byte    `db:"TestJSON"`
+	TestEnum           TestEnum  `db:"TestEnum"`
 }
+type TestEnum string
+
+const (
+	TestEnumValue1 TestEnum = "Value1"
+	TestEnumValue2 TestEnum = "Value2"
+	TestEnumValue3 TestEnum = "Value3"
+)

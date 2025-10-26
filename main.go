@@ -1,12 +1,26 @@
 package main
 
 import (
-	"generatorFromMigrations/cli"
-	"generatorFromMigrations/model"
-	"generatorFromMigrations/parsers/mysql"
-	"generatorFromMigrations/templater"
+	"flag"
+	"fmt"
+	"log"
+	"os"
+
 	_ "github.com/go-sql-driver/mysql"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
+	"github.com/FireAnomaly/go-generator-repository/cli"
+	"github.com/FireAnomaly/go-generator-repository/model"
+	"github.com/FireAnomaly/go-generator-repository/parsers/mysql"
+	"github.com/FireAnomaly/go-generator-repository/templater"
+)
+
+var (
+	migrationPathInput = flag.String("in", "", "Path to the migration files")
+	savePathInput      = flag.String("out", "", "Path to save generated models")
+	isGraphicInput     = flag.Bool("graphic", false, "Whether or not to use graphic")
+	isLogOutput        = flag.Bool("log", false, "Enable detailed logging")
 )
 
 var (
@@ -16,32 +30,59 @@ var (
 )
 
 func main() {
-	//logger, _ := zap.NewDevelopment()
 	logger := zap.NewNop()
 
-	migration := "examples"
+	flag.Parse()
 
-	parser = mysql.NewParser(migration, logger)
-	databases, err := parser.GetDatabasesFromMigrations(migration)
+	if *isLogOutput {
+		var err error
+		logger, err = NewLogger()
+		if err != nil {
+			log.Fatal("Failed to create logger:", err)
+		}
+	}
+
+	if migrationPathInput == nil || *migrationPathInput == "" {
+		log.Fatal("Migration path is required")
+	}
+
+	if savePathInput == nil || *savePathInput == "" {
+		log.Fatal("Save path is required")
+	}
+
+	workDir, err := os.Getwd()
+	if err != nil {
+		logger.Fatal("Failed to get working directory", zap.Error(err))
+	}
+
+	savePath := workDir + "/" + *savePathInput
+	migrationPath := workDir + "/" + *migrationPathInput
+
+	fmt.Println("Migration Path:", migrationPath)
+	fmt.Println("Save Path:", savePath)
+
+	parser = mysql.NewParser(migrationPath, logger)
+	databases, err := parser.GetDatabasesFromMigrations(migrationPath)
 	if err != nil {
 		logger.Fatal("Failed to get migrations", zap.Error(err))
 		panic(err)
 	}
 
-	tableManager = cli.NewTableWriterOnCLI(logger)
-	err = tableManager.ManageTableByUser(databases)
-	if err != nil {
-		logger.Fatal("Failed to manage table by user", zap.Error(err))
-		panic(err)
+	if *isGraphicInput {
+		tableManager = cli.NewTableWriterOnCLI(logger)
+		err = tableManager.ManageTableByUser(databases)
+		if err != nil {
+			logger.Fatal("Failed to manage table by user", zap.Error(err))
+			panic(err)
+		}
 	}
 
 	templateManager = templater.NewTemplater(logger)
-	for _, db := range databases {
-		err = templateManager.CreateDBModel(&db)
-		if err != nil {
-			logger.Fatal("Failed to create DB model", zap.Error(err))
-			panic(err)
-		}
+
+	err = templateManager.SaveModels(databases, savePath)
+	if err != nil {
+		logger.Fatal("Failed to create DB model", zap.Error(err))
+		panic(err)
 	}
 }
 
@@ -55,5 +96,11 @@ type TableManager interface {
 }
 
 type TemplaterManager interface {
-	CreateDBModel(database *model.Database) error
+	SaveModels(databases []model.Database, savePath string) error
+}
+
+func NewLogger() (*zap.Logger, error) {
+	config := zap.NewDevelopmentConfig()
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	return config.Build()
 }

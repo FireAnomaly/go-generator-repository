@@ -9,8 +9,19 @@ var (
 )
 
 type Database struct {
-	TableNames TableNames
-	Columns    []Column
+	TableNames         TableNames
+	Columns            []Column
+	FailedParseColumns []FailedParsedColumn
+}
+
+func (d *Database) IsHaveTime() bool {
+	for _, col := range d.Columns {
+		if col.IsTime() {
+			return true
+		}
+	}
+
+	return false
 }
 
 type TableNames struct {
@@ -25,11 +36,22 @@ type Column struct {
 	DefaultValue  any
 	EnumValues    []string
 	IsNull        bool
-	IsFailed      error
+	// IsDisable     bool fixme // Нужно ли это?
+}
+
+func (c *Column) IsTime() bool {
+	return c.Type == "time.Time"
 }
 
 func (c *Column) IsEnum() bool {
 	return c.Type == "enum"
+}
+
+type FailedParsedColumn struct {
+	OriginalName  string
+	CamelCaseName string
+	LineNumber    int
+	Reason        error
 }
 
 // SupportedTypes содержит поддерживаемые типы данных и их синонимы - При парсинге приводить к нижнему регистру.
@@ -58,6 +80,9 @@ var SupportedTypes = map[string][]string{
 	},
 	"time.Time": {
 		"date", "datetime", "timestamp", "time", "year",
+	},
+	"[]byte": {
+		"blob", "tinyblob", "mediumblob", "longblob", "binary", "varbinary", "json",
 	},
 }
 
@@ -106,6 +131,13 @@ var ReverseSupportedTypes = map[string]string{
 	"timestamp":          "time.Time",
 	"time":               "time.Time",
 	"year":               "time.Time",
+	"blob":               "[]byte",
+	"tinyblob":           "[]byte",
+	"mediumblob":         "[]byte",
+	"longblob":           "[]byte",
+	"binary":             "[]byte",
+	"varbinary":          "[]byte",
+	"json":               "[]byte",
 }
 
 // Поведение при Enum

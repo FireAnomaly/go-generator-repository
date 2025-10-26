@@ -12,5 +12,4 @@ type TestTable2 struct {
 	TestDate           time.Time `db:"TestDate"`
 	TestUnique         string    `db:"TestUnique"`
 	TestForeign        int       `db:"TestForeign"`
-	TestEnum           string    `db:"TestEnum"`
 }
