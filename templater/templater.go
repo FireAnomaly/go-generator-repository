@@ -19,12 +19,8 @@ func NewTemplater(logger *zap.Logger) *Templater {
 		logger = zap.NewNop()
 	}
 
-	return &Templater{logger: logger.Named("Templater")}
+	return &Templater{logger: logger.Named("Templater: ")}
 }
-
-// Файл со сгенерированной моделью будет называться как оригинальное имя таблицы с суффиксом _model.go,
-// В то время как имя структуры будет в CamelCase формате.
-// А вот имя пакета нужно делать в соответствии с папкой, куда сохраняется файл.
 
 type Field struct {
 	Name string
@@ -38,7 +34,7 @@ type CustomType struct {
 	Values     []string
 }
 
-func (t *Templater) ParseColumnsToFields(columns []model.Column) ([]Field, []CustomType) {
+func (t *Templater) parseColumnsToFields(columns []model.Column) ([]Field, []CustomType) {
 	fields := make([]Field, 0, len(columns))
 	customTypes := make([]CustomType, 0, cap(columns))
 
@@ -58,7 +54,7 @@ func (t *Templater) ParseColumnsToFields(columns []model.Column) ([]Field, []Cus
 		field := Field{
 			Name: column.CamelCaseName,
 			Type: column.Type,
-			Tags: t.GetTags(column),
+			Tags: t.getTags(column),
 		}
 		fields = append(fields, field)
 	}
@@ -66,13 +62,23 @@ func (t *Templater) ParseColumnsToFields(columns []model.Column) ([]Field, []Cus
 	return fields, customTypes
 }
 
-func (t *Templater) GetTags(column model.Column) string {
+func (t *Templater) getTags(column model.Column) string {
 	return `db:"` + column.OriginalName + `"`
 }
 
-func (t *Templater) CreateDBModel(database *model.Database, savePath string) error {
+func (t *Templater) SaveModels(databases []model.Database, savePath string) error {
+	for _, db := range databases {
+		if err := t.saveModel(&db, savePath); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (t *Templater) saveModel(database *model.Database, savePath string) error {
 	t.logger.Info("Start creating model...", zap.String("database", database.TableNames.Original))
-	fields, customTypes := t.ParseColumnsToFields(database.Columns)
+	fields, customTypes := t.parseColumnsToFields(database.Columns)
 
 	packageName := strings.Split(savePath, "/")[len(strings.Split(savePath, "/"))-1]
 
@@ -114,10 +120,10 @@ func (t *Templater) CreateDBModel(database *model.Database, savePath string) err
 	return nil
 }
 
-const (
-	templateText = `package {{.PackageName}} 
+const templateText = `package {{.PackageName}} 
 
-{{if .HasTimePackage}}import "time"
+{{if .HasTimePackage}}
+import "time"
 {{end}} 
 
 type {{.ModelName}} struct {
@@ -130,9 +136,10 @@ type {{.ModelName}} struct {
 type {{.Name}} {{.ParentType}}
 
 const (
+{{- $typeName := .Name}}
 {{- range .Values}}
-    {{.Name}}{{.}} {{.Name}} = "{{.}}"
+    {{$typeName}}{{.}} {{$typeName}} = "{{.}}"
 {{- end}}
 )
-{{end}}`
-)
+{{end}}
+`

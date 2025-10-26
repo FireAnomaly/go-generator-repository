@@ -19,6 +19,8 @@ import (
 var (
 	migrationPathInput = flag.String("in", "", "Path to the migration files")
 	savePathInput      = flag.String("out", "", "Path to save generated models")
+	isGraphicInput     = flag.Bool("graphic", false, "Whether or not to use graphic")
+	isLogOutput        = flag.Bool("log", false, "Enable detailed logging")
 )
 
 var (
@@ -28,12 +30,18 @@ var (
 )
 
 func main() {
-	logger, err := NewLogger()
-	if err != nil {
-		log.Fatal("Failed to create logger:", err)
-	}
-	logger = zap.NewNop()
+	logger := zap.NewNop()
+
 	flag.Parse()
+
+	if *isLogOutput {
+		var err error
+		logger, err = NewLogger()
+		if err != nil {
+			log.Fatal("Failed to create logger:", err)
+		}
+	}
+
 	if migrationPathInput == nil || *migrationPathInput == "" {
 		log.Fatal("Migration path is required")
 	}
@@ -60,21 +68,21 @@ func main() {
 		panic(err)
 	}
 
-	tableManager = cli.NewTableWriterOnCLI(logger)
-	// tableManager = cli.NewTview()
-	err = tableManager.ManageTableByUser(databases)
-	if err != nil {
-		logger.Fatal("Failed to manage table by user", zap.Error(err))
-		panic(err)
+	if *isGraphicInput {
+		tableManager = cli.NewTableWriterOnCLI(logger)
+		err = tableManager.ManageTableByUser(databases)
+		if err != nil {
+			logger.Fatal("Failed to manage table by user", zap.Error(err))
+			panic(err)
+		}
 	}
 
 	templateManager = templater.NewTemplater(logger)
-	for _, db := range databases {
-		err = templateManager.CreateDBModel(&db, savePath)
-		if err != nil {
-			logger.Fatal("Failed to create DB model", zap.Error(err))
-			panic(err)
-		}
+
+	err = templateManager.SaveModels(databases, savePath)
+	if err != nil {
+		logger.Fatal("Failed to create DB model", zap.Error(err))
+		panic(err)
 	}
 }
 
@@ -88,7 +96,7 @@ type TableManager interface {
 }
 
 type TemplaterManager interface {
-	CreateDBModel(database *model.Database, savePath string) error
+	SaveModels(databases []model.Database, savePath string) error
 }
 
 func NewLogger() (*zap.Logger, error) {
