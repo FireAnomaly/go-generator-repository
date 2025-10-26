@@ -12,7 +12,8 @@ permissions:
 jobs:
   build:
     runs-on: [self-hosted, Linux, X64]
-
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,6 +48,7 @@ jobs:
           new_version="v$major.$minor.$new_patch"
           echo "new_version=$new_version" >> $GITHUB_ENV
           echo "New version: $new_version"
+          echo "::set-output name=new_version::$new_version"
 
   release:
     needs: build
@@ -59,8 +61,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ env.new_version }}
-          release_name: Release ${{ env.new_version }}
+          tag_name: ${{ needs.build.outputs.new_version }}
+          release_name: Release ${{ needs.build.outputs.new_version }}
           draft: false
           prerelease: false
 
@@ -71,5 +73,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./go-generator-repo
-          asset_name: go-generator-repo-$${{ env.new_version }}-linux-amd64
+          asset_name: go-generator-repo-${{ needs.build.outputs.new_version }}-linux-amd64
           asset_content_type: application/octet-stream
