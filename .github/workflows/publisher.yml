@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     runs-on: [self-hosted, Linux, X64]
 
     steps:
@@ -27,15 +27,6 @@ jobs:
       - name: Build
         run: go build -o go-generator-repo
 
-      - name: Releaser Action
-        uses: goreleaser/goreleaser-action@v4
-        with:
-          version: latest
-          args: release --rm-dist
-        env:
-          GORELEASER_CURRENT_TAG: ${{ env.latest_tag }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Get latest tag
         id: get_tag
         run: |
@@ -51,3 +42,34 @@ jobs:
           version=${latest#v}
           major=$(echo $version | cut -d. -f1)
           minor=$(echo $version | cut -d. -f2)
+          patch=$(echo $version | cut -d. -f3)
+          new_patch=$((patch + 1))
+          new_version="v$major.$minor.$new_patch"
+          echo "new_version=$new_version" >> $GITHUB_ENV
+          echo "New version: $new_version"
+
+  release:
+    needs: build
+    runs-on: [self-hosted, Linux, X64]
+
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.new_version }}
+          release_name: Release ${{ env.new_version }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./go-generator-repo
+          asset_name: go-generator-repo-$${{ env.new_version }}-linux-amd64
+          asset_content_type: application/octet-stream
