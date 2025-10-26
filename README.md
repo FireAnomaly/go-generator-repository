@@ -34,7 +34,7 @@ Run in workdirectory of your project
 
 - `-in` (required): Path to the migration files.
 - `-out` (required): Path to save generated models.
-- `-graphic`: Enable interactive table selection (optional). (true or false)
+- `-graphic`: Enable ~~interactive~~ table selection (optional). (true or false) Ctrl + C to exit.
 - `-log`: Enable detailed logging (optional). (true or false)
 
 ### Example
@@ -54,6 +54,16 @@ Run in workdirectory of your project
 ## Logging
 
 Enable detailed logs with `-log` flag. Uses [uber-go/zap](https://github.com/uber-go/zap).
+
+## ToDos
+
+-[ ] Get functional to graphic interface (now is only to show)
+-[ ] Upgrade templater to support more complex relationships
+- Like to other tables (foreign keys), many to many, etc.
+-[ ] Upgrade parser to support more SQL dialects
+-[ ] Upgrade custom types that templater can generate
+- Add relation with other models in your project, like ToModel() and FromModel()
+
 
 ## License
 

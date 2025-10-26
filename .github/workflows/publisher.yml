@@ -46,6 +46,7 @@ jobs:
           patch=$(echo $version | cut -d. -f3)
           new_patch=$((patch + 1))
           new_version="v$major.$minor.$new_patch"
+          {{env.}}
           echo "new_version=$new_version" >> $GITHUB_ENV
           echo "New version: $new_version"
           echo "::set-output name=new_version::$new_version"
