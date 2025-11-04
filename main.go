@@ -18,7 +18,6 @@ import (
 var (
 	migrationPathInput = flag.String("in", "", "Path to the migration files")
 	savePathInput      = flag.String("out", "", "Path to save generated models")
-	isGraphicInput     = flag.Bool("graphic", false, "Whether or not to use graphic")
 	isLogOutput        = flag.Bool("log", false, "Enable detailed logging")
 	logLevel           = zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set the logging level")
 )
@@ -67,13 +66,11 @@ func main() {
 		panic(err)
 	}
 
-	if *isGraphicInput {
-		tableManager = cli.NewTableWriterOnCLI(logger)
-		err = tableManager.ManageTableByUser(databases)
-		if err != nil {
-			logger.Fatal("Failed to manage table by user", zap.Error(err))
-			panic(err)
-		}
+	tableManager = cli.NewTableWriterOnCLI(logger)
+	err = tableManager.ManageTableByUser(databases)
+	if err != nil {
+		logger.Fatal("Failed to manage table by user", zap.Error(err))
+		panic(err)
 	}
 
 	templateManager = templater.NewTemplater(logger)

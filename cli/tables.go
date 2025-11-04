@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
@@ -17,6 +19,7 @@ import (
 type TableWriterOnCLI struct {
 	writer     *cliParams
 	managedDBs *managedDBs
+	selectedDB *model.Database
 	dbs        []model.Database
 	logger     *zap.Logger
 }
@@ -31,8 +34,9 @@ func NewTableWriterOnCLI(logger *zap.Logger) *TableWriterOnCLI {
 
 func (cli *TableWriterOnCLI) ManageTableByUser(dbs []model.Database) error {
 	cli.logger.Debug("Start ManageTableByUser on CLI")
+	cli.dbs = dbs
 
-	return cli.manageWriters(dbs)
+	return cli.manageWriters()
 }
 
 func (cli *TableWriterOnCLI) clearConsole() {
@@ -40,82 +44,59 @@ func (cli *TableWriterOnCLI) clearConsole() {
 	case "windows":
 		cmd := exec.Command("cmd", "/c", "cls")
 		cmd.Stdout = os.Stdout
-		cmd.Run()
+		_ = cmd.Run()
 	case "linux", "darwin":
 		cmd := exec.Command("clear")
 		cmd.Stdout = os.Stdout
-		cmd.Run()
+		_ = cmd.Run()
 	default:
 		panic("Your platform is unsupported! I can't clearConsole terminal screen :(")
 	}
 }
 
-func (cli *TableWriterOnCLI) manageWriters(dbs []model.Database) error {
+var CloseSignal = errors.New("user initiate close signal")
+
+func (cli *TableWriterOnCLI) manageWriters() error {
 	for {
-		err := cli.manageDBs(dbs)
+		err := cli.manageDBs()
 		if err != nil {
 			return err
 		}
 
-		if cli.managedDBs.isWannaExit {
+		if cli.managedDBs.saveAndExit {
 			return nil
 		}
 
+		if cli.managedDBs.exit {
+			return CloseSignal
+		}
+
 		if cli.managedDBs.isNeedToManageCols {
-			if err = cli.choiceColumns(dbs[cli.writer.SelectedRow-1]); err != nil {
+			cli.selectedDB = &cli.dbs[cli.managedDBs.selectedRow-1]
+			if err = cli.manageColumns(); err != nil {
 				return err
+			}
+
+			if cli.managedDBs.exit {
+				return CloseSignal
 			}
 		}
 	}
 }
 
 type managedDBs struct {
-	isWannaExit        bool
+	exit               bool
+	saveAndExit        bool
 	isNeedToManageCols bool
 	selectedRow        int
 }
 
-func (cli *TableWriterOnCLI) keyboardListenWrapperManageDBs(key keys.Key) (stop bool, err error) {
-	switch key.Code {
-	case keys.Down:
-		cli.downRow()
-		cli.writeTable(cli.dbs)
-
-		return false, nil
-
-	case keys.Up:
-		cli.upRow()
-		cli.writeTable(cli.dbs)
-
-		return false, nil
-
-	case keys.Right:
-		cli.managedDBs = &managedDBs{
-			isWannaExit:        false,
-			isNeedToManageCols: true,
-			selectedRow:        cli.writer.SelectedRow,
-		}
-
-		return true, nil
-
-	case keys.CtrlC:
-		cli.managedDBs = &managedDBs{
-			isWannaExit: true,
-		}
-		return true, nil
-
-	default:
-		return false, nil
-
-	}
-}
-
-func (cli *TableWriterOnCLI) manageDBs(dbs []model.Database) error {
+func (cli *TableWriterOnCLI) manageDBs() error {
 	selectedRow := minRows
-	rows := len(dbs)
+	rows := len(cli.dbs)
 
 	cli.initDescriptor(selectedRow, rows)
-	cli.writeTable(dbs)
+	cli.writeTable()
 
 	err := keyboard.Listen(cli.keyboardListenWrapperManageDBs)
 	if err != nil {
@@ -125,37 +106,88 @@ func (cli *TableWriterOnCLI) manageDBs(dbs []model.Database) error {
 	return nil
 }
 
-func (cli *TableWriterOnCLI) choiceColumns(db model.Database) error {
+func (cli *TableWriterOnCLI) keyboardListenWrapperManageDBs(key keys.Key) (stop bool, err error) {
+	switch key.Code {
+	case keys.Down:
+		cli.downRow()
+		cli.writeTable()
+
+		return false, nil
+
+	case keys.Up:
+		cli.upRow()
+		cli.writeTable()
+
+		return false, nil
+
+	case keys.Right:
+		cli.managedDBs = &managedDBs{
+			exit:               false,
+			isNeedToManageCols: true,
+			selectedRow:        cli.writer.SelectedRow,
+		}
+
+		return true, nil
+
+	case keys.Enter:
+		cli.managedDBs = &managedDBs{
+			saveAndExit: true,
+		}
+
+		return true, nil
+
+	case keys.CtrlC:
+		cli.managedDBs = &managedDBs{
+			exit: true,
+		}
+		return true, nil
+
+	default:
+		return false, nil
+
+	}
+}
+
+func (cli *TableWriterOnCLI) manageColumns() error {
 	selectedRow := minRows
-	rows := len(db.Columns)
+	rows := len(cli.selectedDB.Columns)
 
 	cli.initDescriptor(selectedRow, rows)
-	cli.writeTableColumns(db)
+	cli.writeColumns()
 
-	return keyboard.Listen(func(key keys.Key) (stop bool, err error) {
-		switch key.Code {
-		case keys.Down:
-			cli.downRow()
-			cli.writeTableColumns(db)
+	return keyboard.Listen(cli.keyboardListenWrapperManageColumns)
+}
 
-			return false, nil
+func (cli *TableWriterOnCLI) keyboardListenWrapperManageColumns(key keys.Key) (stop bool, err error) {
+	switch key.Code {
+	case keys.Down:
+		cli.downRow()
+		cli.writeColumns()
 
-		case keys.Up:
-			cli.upRow()
-			cli.writeTableColumns(db)
+		return false, nil
 
-			return false, nil
+	case keys.Up:
+		cli.upRow()
+		cli.writeColumns()
 
-		case keys.Left:
-			return true, nil
+		return false, nil
 
-		case keys.CtrlC:
-			return true, nil
+	case keys.Left:
+		return true, nil
 
-		default:
-			return false, nil
+	case keys.Enter:
+		return true, nil
+
+	case keys.CtrlC:
+		cli.managedDBs = &managedDBs{
+			exit: true,
 		}
-	})
+
+		return true, nil
+
+	default:
+		return false, nil
+	}
 }
 
 type cliParams struct {
@@ -197,7 +229,7 @@ func (cli *TableWriterOnCLI) downRow() {
 	cli.writer.SelectedRow = selectedRow
 }
 
-func (cli *TableWriterOnCLI) writeTable(dbs []model.Database) {
+func (cli *TableWriterOnCLI) writeTable() {
 	cli.logger.Debug("Start writeTable")
 
 	cli.clearConsole()
@@ -207,7 +239,7 @@ func (cli *TableWriterOnCLI) writeTable(dbs []model.Database) {
 	t.AppendHeader(table.Row{"Original Name", "CamelCased Name", "Line Number"})
 
 	currentRow := 1
-	for _, db := range dbs {
+	for _, db := range cli.dbs {
 		t.AppendRow(table.Row{db.TableNames.Original, db.TableNames.CamelCase, len(db.Columns)})
 		t.AppendSeparator()
 
@@ -223,11 +255,13 @@ func (cli *TableWriterOnCLI) writeTable(dbs []model.Database) {
 
 	t.Render()
 
+	fmt.Printf("Right Arrow - to insert selected base \nCTRL+C - exit \nEnter - Apply \n>>>")
+
 	return
 }
 
-func (cli *TableWriterOnCLI) writeTableColumns(db model.Database) {
-	cli.logger.Debug("Start writeTableColumns")
+func (cli *TableWriterOnCLI) writeColumns() {
+	cli.logger.Debug("Start writeColumns")
 
 	cli.clearConsole()
 
@@ -236,7 +270,7 @@ func (cli *TableWriterOnCLI) writeTableColumns(db model.Database) {
 	t.AppendHeader(table.Row{"Original Name", "CamelCased Name", "Type", "DefaultValue", "EnumValues", "IsNull"})
 
 	currentRow := 1
-	for _, column := range db.Columns {
+	for _, column := range cli.selectedDB.Columns {
 		t.AppendRow(table.Row{
 			column.OriginalName,
 			column.CamelCaseName,
@@ -258,6 +292,8 @@ func (cli *TableWriterOnCLI) writeTableColumns(db model.Database) {
 	}
 
 	t.Render()
+
+	fmt.Printf("Left Arrow - to back on main screen \nCTRL+C - exit \nEnter - Apply\n>>>")
 
 	return
 }
