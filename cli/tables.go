@@ -9,14 +9,16 @@ import (
 	"atomicgo.dev/keyboard"
 	"atomicgo.dev/keyboard/keys"
 	"github.com/FireAnomaly/go-generator-repository/model"
-	"github.com/aws/smithy-go/ptr"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
 	"go.uber.org/zap"
 )
 
 type TableWriterOnCLI struct {
-	logger *zap.Logger
+	writer     *cliParams
+	managedDBs *managedDBs
+	dbs        []model.Database
+	logger     *zap.Logger
 }
 
 func NewTableWriterOnCLI(logger *zap.Logger) *TableWriterOnCLI {
@@ -33,119 +35,114 @@ func (cli *TableWriterOnCLI) ManageTableByUser(dbs []model.Database) error {
 	return cli.manageWriters(dbs)
 }
 
-var clearConsole map[string]func() // create a map for storing clearConsole funcs
-
-func init() {
-	clearConsole = make(map[string]func()) // Initialize it
-	clearConsole["linux"] = func() {
-		cmd := exec.Command("clear") // Linux example, its tested
-		cmd.Stdout = os.Stdout
-		cmd.Run()
-	}
-	clearConsole["windows"] = func() {
-		cmd := exec.Command("cmd", "/c", "cls") // Windows example, its tested
-		cmd.Stdout = os.Stdout
-		cmd.Run()
-	}
-}
-
 func (cli *TableWriterOnCLI) clearConsole() {
-	value, ok := clearConsole[runtime.GOOS] // runtime.GOOS -> linux, windows, darwin etc.
-	if ok {                                 // if we defined a clearConsole func for that platyform:
-		value() // we execute it
-	} else { // unsupported platform
+	switch runtime.GOOS {
+	case "windows":
+		cmd := exec.Command("cmd", "/c", "cls")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	case "linux", "darwin":
+		cmd := exec.Command("clear")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	default:
 		panic("Your platform is unsupported! I can't clearConsole terminal screen :(")
 	}
 }
 
 func (cli *TableWriterOnCLI) manageWriters(dbs []model.Database) error {
 	for {
-		chosenDB, err := cli.choiceDataBase(dbs)
+		err := cli.manageDBs(dbs)
 		if err != nil {
 			return err
 		}
 
-		if chosenDB.isWannaExit {
+		if cli.managedDBs.isWannaExit {
 			return nil
 		}
 
-		if chosenDB.isNeedToManageCols {
-			if err = cli.choiceColumns(dbs[chosenDB.selectedRow-1]); err != nil {
+		if cli.managedDBs.isNeedToManageCols {
+			if err = cli.choiceColumns(dbs[cli.writer.SelectedRow-1]); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-type resultOfChoisenDatabase struct {
+type managedDBs struct {
 	isWannaExit        bool
 	isNeedToManageCols bool
 	selectedRow        int
 }
 
-func (cli *TableWriterOnCLI) choiceDataBase(dbs []model.Database) (resultOfChoisenDatabase, error) {
-	var result resultOfChoisenDatabase
+func (cli *TableWriterOnCLI) keyboardListenWrapperManageDBs(key keys.Key) (stop bool, err error) {
+	switch key.Code {
+	case keys.Down:
+		cli.downRow()
+		cli.writeTable(cli.dbs)
 
+		return false, nil
+
+	case keys.Up:
+		cli.upRow()
+		cli.writeTable(cli.dbs)
+
+		return false, nil
+
+	case keys.Right:
+		cli.managedDBs = &managedDBs{
+			isWannaExit:        false,
+			isNeedToManageCols: true,
+			selectedRow:        cli.writer.SelectedRow,
+		}
+
+		return true, nil
+
+	case keys.CtrlC:
+		cli.managedDBs = &managedDBs{
+			isWannaExit: true,
+		}
+		return true, nil
+
+	default:
+		return false, nil
+
+	}
+}
+
+func (cli *TableWriterOnCLI) manageDBs(dbs []model.Database) error {
 	selectedRow := minRows
 	rows := len(dbs)
 
-	writeDescriptor := cli.writeDescriptor(selectedRow, rows)
-	cli.writeTable(writeDescriptor, dbs)
+	cli.initDescriptor(selectedRow, rows)
+	cli.writeTable(dbs)
 
-	err := keyboard.Listen(func(key keys.Key) (stop bool, err error) {
-		switch key.Code {
-		case keys.Down:
-			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow+1, len(dbs))
-			cli.writeTable(writeDescriptor, dbs)
-
-			return false, nil
-
-		case keys.Up:
-			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow-1, len(dbs))
-			cli.writeTable(writeDescriptor, dbs)
-
-			return false, nil
-
-		case keys.Right:
-			result.isNeedToManageCols = true
-			result.selectedRow = selectedRow
-
-			return true, nil
-
-		case keys.CtrlC:
-			result.isWannaExit = true
-
-			return true, nil
-
-		default:
-			return false, nil
-		}
-	})
+	err := keyboard.Listen(cli.keyboardListenWrapperManageDBs)
 	if err != nil {
-		return result, err
+		return err
 	}
 
-	return result, nil
+	return nil
 }
 
 func (cli *TableWriterOnCLI) choiceColumns(db model.Database) error {
 	selectedRow := minRows
 	rows := len(db.Columns)
 
-	writeDescriptor := cli.writeDescriptor(selectedRow, rows)
-	cli.writeTableColumns(writeDescriptor, db)
+	cli.initDescriptor(selectedRow, rows)
+	cli.writeTableColumns(db)
 
 	return keyboard.Listen(func(key keys.Key) (stop bool, err error) {
 		switch key.Code {
 		case keys.Down:
-			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow+1, rows)
-			cli.writeTableColumns(writeDescriptor, db)
+			cli.downRow()
+			cli.writeTableColumns(db)
 
 			return false, nil
 
 		case keys.Up:
-			writeDescriptor = cli.writeDescriptor(writeDescriptor.SelectedRow-1, rows)
-			cli.writeTableColumns(writeDescriptor, db)
+			cli.upRow()
+			cli.writeTableColumns(db)
 
 			return false, nil
 
@@ -161,7 +158,7 @@ func (cli *TableWriterOnCLI) choiceColumns(db model.Database) error {
 	})
 }
 
-type toWrite struct {
+type cliParams struct {
 	MaxRows     int
 	MinRows     int
 	Message     *string
@@ -170,28 +167,37 @@ type toWrite struct {
 
 const minRows = 1 // really? :)
 
-func (cli *TableWriterOnCLI) writeDescriptor(selectedRow int, countRows int) toWrite {
-	writer := toWrite{
+func (cli *TableWriterOnCLI) initDescriptor(selectedRow int, countRows int) {
+	cli.writer = &cliParams{
 		MaxRows:     countRows,
 		MinRows:     minRows,
-		Message:     nil,
 		SelectedRow: selectedRow,
 	}
 
-	if selectedRow < minRows {
-		writer.Message = ptr.String("Already at the top row")
-		writer.SelectedRow = minRows
-	}
-
-	if selectedRow > countRows {
-		writer.Message = ptr.String("Already at the bottom row")
-		writer.SelectedRow = countRows
-	}
-
-	return writer
+	return
 }
 
-func (cli *TableWriterOnCLI) writeTable(writeDescriptor toWrite, dbs []model.Database) {
+func (cli *TableWriterOnCLI) upRow() {
+	selectedRow := cli.writer.SelectedRow
+	selectedRow--
+	if cli.writer.MinRows > selectedRow {
+		return
+	}
+
+	cli.writer.SelectedRow = selectedRow
+}
+
+func (cli *TableWriterOnCLI) downRow() {
+	selectedRow := cli.writer.SelectedRow
+	selectedRow++
+	if cli.writer.MaxRows < selectedRow {
+		return
+	}
+
+	cli.writer.SelectedRow = selectedRow
+}
+
+func (cli *TableWriterOnCLI) writeTable(dbs []model.Database) {
 	cli.logger.Debug("Start writeTable")
 
 	cli.clearConsole()
@@ -206,7 +212,7 @@ func (cli *TableWriterOnCLI) writeTable(writeDescriptor toWrite, dbs []model.Dat
 		t.AppendSeparator()
 
 		t.SetRowPainter(func(row table.Row, attr table.RowAttributes) text.Colors {
-			if attr.Number == writeDescriptor.SelectedRow {
+			if attr.Number == cli.writer.SelectedRow {
 				return text.Colors{text.FgGreen}
 			}
 
@@ -220,7 +226,7 @@ func (cli *TableWriterOnCLI) writeTable(writeDescriptor toWrite, dbs []model.Dat
 	return
 }
 
-func (cli *TableWriterOnCLI) writeTableColumns(writeDescriptor toWrite, db model.Database) {
+func (cli *TableWriterOnCLI) writeTableColumns(db model.Database) {
 	cli.logger.Debug("Start writeTableColumns")
 
 	cli.clearConsole()
@@ -242,7 +248,7 @@ func (cli *TableWriterOnCLI) writeTableColumns(writeDescriptor toWrite, db model
 		t.AppendSeparator()
 
 		t.SetRowPainter(func(row table.Row, attr table.RowAttributes) text.Colors {
-			if attr.Number == writeDescriptor.SelectedRow {
+			if attr.Number == cli.writer.SelectedRow {
 				return text.Colors{text.FgGreen}
 			}
 
