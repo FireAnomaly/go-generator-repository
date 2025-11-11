@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	migrationPathInput = flag.String("in", "", "Path to the migration files")
-	savePathInput      = flag.String("out", "", "Path to save generated models")
+	migrationPathInput = flag.String("in", "", "Path to the migration files (example: /examples)")
+	savePathInput      = flag.String("out", "", "Path to save generated models (example: /examples/output)")
 	isLogOutput        = flag.Bool("log", false, "Enable detailed logging")
 	logLevel           = zap.LevelFlag("loglevel", zapcore.InfoLevel, "Set the logging level")
 )
@@ -54,8 +54,8 @@ func main() {
 		logger.Fatal("Failed to get working directory", zap.Error(err))
 	}
 
-	savePath := workDir + "/" + *savePathInput
-	migrationPath := workDir + "/" + *migrationPathInput
+	savePath := workDir + *savePathInput
+	migrationPath := workDir + *migrationPathInput
 
 	logger.Info("Paths ", zap.String("migration", migrationPath), zap.String("save", savePath))
 

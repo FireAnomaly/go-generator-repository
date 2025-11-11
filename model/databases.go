@@ -9,6 +9,7 @@ var (
 )
 
 type Database struct {
+	Disabled           bool
 	TableNames         TableNames
 	Columns            []Column
 	FailedParseColumns []FailedParsedColumn

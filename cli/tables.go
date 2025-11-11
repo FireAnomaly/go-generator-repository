@@ -10,10 +10,11 @@ import (
 
 	"atomicgo.dev/keyboard"
 	"atomicgo.dev/keyboard/keys"
-	"github.com/FireAnomaly/go-generator-repository/model"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
 	"go.uber.org/zap"
+
+	"github.com/FireAnomaly/go-generator-repository/model"
 )
 
 type TableWriterOnCLI struct {
@@ -85,7 +86,9 @@ func (cli *TableWriterOnCLI) manageWriters() error {
 }
 
 type managedDBs struct {
+	db                 *model.Database
 	exit               bool
+	disableCurrent     bool
 	saveAndExit        bool
 	isNeedToManageCols bool
 	selectedRow        int
@@ -141,10 +144,12 @@ func (cli *TableWriterOnCLI) keyboardListenWrapperManageDBs(key keys.Key) (stop 
 			exit: true,
 		}
 		return true, nil
+	case keys.Backspace:
+		cli.selectedDB.Disabled = true
+		return true, nil
 
 	default:
 		return false, nil
-
 	}
 }
 
