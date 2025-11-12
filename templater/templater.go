@@ -52,7 +52,7 @@ func (t *Templater) parseColumnsToFields(camelCasedDBName string, columns []mode
 		}
 
 		field := Field{
-			Name: camelCasedDBName + column.CamelCaseName,
+			Name: column.CamelCaseName,
 			Type: column.Type,
 			Tags: t.getTags(column),
 		}
