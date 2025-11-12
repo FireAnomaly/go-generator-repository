@@ -8,8 +8,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/FireAnomaly/go-generator-repository/model"
 	"go.uber.org/zap"
+
+	"github.com/FireAnomaly/go-generator-repository/model"
 )
 
 type Parser struct {
@@ -25,7 +26,7 @@ func NewParser(migrationPath string, logger *zap.Logger) *Parser {
 	return &Parser{migrationPath: migrationPath, logger: logger.Named("MySQL Parser: ")}
 }
 
-func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]model.Database, error) {
+func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]*model.Database, error) {
 	p.logger.Info("Parse migrations", zap.String("migrationPath", migrationPath))
 	paths, err := p.GetPaths(migrationPath)
 	if err != nil {
@@ -34,7 +35,7 @@ func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]model.Datab
 		return nil, err
 	}
 
-	var databases []model.Database
+	var databases []*model.Database
 	for _, path := range paths {
 		p.logger.Info("Processing migration file", zap.String("path", path))
 		var fileInfo []byte
@@ -61,7 +62,7 @@ func (p *Parser) GetDatabasesFromMigrations(migrationPath string) ([]model.Datab
 		}
 		p.logger.Debug("Parsed columns")
 
-		databases = append(databases, model.Database{
+		databases = append(databases, &model.Database{
 			TableNames: model.TableNames{
 				CamelCase: TableName.CamelCase,
 				Original:  TableName.Original,

@@ -66,9 +66,13 @@ func (t *Templater) getTags(column model.Column) string {
 	return `db:"` + column.OriginalName + `"`
 }
 
-func (t *Templater) SaveModels(databases []model.Database, savePath string) error {
+func (t *Templater) SaveModels(databases []*model.Database, savePath string) error {
 	for _, db := range databases {
-		if err := t.saveModel(&db, savePath); err != nil {
+		if db == nil || db.Disabled {
+			continue
+		}
+
+		if err := t.saveModel(db, savePath); err != nil {
 			return err
 		}
 	}

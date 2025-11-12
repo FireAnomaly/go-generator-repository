@@ -66,15 +66,14 @@ func main() {
 		panic(err)
 	}
 
-	tableManager = cli.NewTableWriterOnCLI(logger)
-	err = tableManager.ManageTableByUser(databases)
+	tableManager = cli.NewTableWriterOnCLI(logger, databases)
+	err = tableManager.ManageTableByUser()
 	if err != nil {
 		logger.Fatal("Failed to manage table by user", zap.Error(err))
 		panic(err)
 	}
 
 	templateManager = templater.NewTemplater(logger)
-
 	err = templateManager.SaveModels(databases, savePath)
 	if err != nil {
 		logger.Fatal("Failed to create DB model", zap.Error(err))
@@ -84,15 +83,15 @@ func main() {
 
 // FileParser Интерфейс для возможного кастомного парсера.
 type FileParser interface {
-	GetDatabasesFromMigrations(migrationPath string) ([]model.Database, error)
+	GetDatabasesFromMigrations(migrationPath string) ([]*model.Database, error)
 }
 
 type TableManager interface {
-	ManageTableByUser(dbs []model.Database) error
+	ManageTableByUser() error
 }
 
 type TemplaterManager interface {
-	SaveModels(databases []model.Database, savePath string) error
+	SaveModels(databases []*model.Database, savePath string) error
 }
 
 func NewLogger() (*zap.Logger, error) {
