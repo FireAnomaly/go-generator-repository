@@ -34,7 +34,7 @@ type CustomType struct {
 	Values     []string
 }
 
-func (t *Templater) parseColumnsToFields(columns []model.Column) ([]Field, []CustomType) {
+func (t *Templater) parseColumnsToFields(camelCasedDBName string, columns []model.Column) ([]Field, []CustomType) {
 	fields := make([]Field, 0, len(columns))
 	customTypes := make([]CustomType, 0, cap(columns))
 
@@ -43,16 +43,16 @@ func (t *Templater) parseColumnsToFields(columns []model.Column) ([]Field, []Cus
 			t.logger.Debug("Column is enum type", zap.String("column", column.OriginalName))
 
 			customTypes = append(customTypes, CustomType{
-				Name:       column.CamelCaseName,
+				Name:       camelCasedDBName + column.CamelCaseName,
 				ParentType: "string",
 				Values:     column.EnumValues,
 			})
 
-			column.Type = column.CamelCaseName
+			column.Type = camelCasedDBName + column.CamelCaseName
 		}
 
 		field := Field{
-			Name: column.CamelCaseName,
+			Name: camelCasedDBName + column.CamelCaseName,
 			Type: column.Type,
 			Tags: t.getTags(column),
 		}
@@ -82,7 +82,7 @@ func (t *Templater) SaveModels(databases []*model.Database, savePath string) err
 
 func (t *Templater) saveModel(database *model.Database, savePath string) error {
 	t.logger.Info("Start creating model...", zap.String("database", database.TableNames.Original))
-	fields, customTypes := t.parseColumnsToFields(database.Columns)
+	fields, customTypes := t.parseColumnsToFields(database.TableNames.CamelCase, database.Columns)
 
 	packageName := strings.Split(savePath, "/")[len(strings.Split(savePath, "/"))-1]
 
