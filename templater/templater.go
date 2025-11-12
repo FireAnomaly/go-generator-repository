@@ -34,6 +34,16 @@ type CustomType struct {
 	Values     []string
 }
 
+func (t *Templater) normalizeEnumValues(words []string) []string {
+	results := make([]string, 0, len(words))
+	for _, word := range words { // fixme: non effective
+		bigLetter := strings.ToUpper(string(word[0]))
+		results = append(results, bigLetter+word[1:])
+	}
+
+	return results
+}
+
 func (t *Templater) parseColumnsToFields(camelCasedDBName string, columns []model.Column) ([]Field, []CustomType) {
 	fields := make([]Field, 0, len(columns))
 	customTypes := make([]CustomType, 0, cap(columns))
@@ -45,7 +55,7 @@ func (t *Templater) parseColumnsToFields(camelCasedDBName string, columns []mode
 			customTypes = append(customTypes, CustomType{
 				Name:       camelCasedDBName + column.CamelCaseName,
 				ParentType: "string",
-				Values:     column.EnumValues,
+				Values:     t.normalizeEnumValues(column.EnumValues),
 			})
 
 			column.Type = camelCasedDBName + column.CamelCaseName
