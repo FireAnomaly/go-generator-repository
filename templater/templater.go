@@ -125,11 +125,9 @@ func (t *Templater) saveModel(database *model.Database, savePath string) error {
 }
 
 const templateText = `package {{.PackageName}} 
-
 {{if .HasTimePackage}}
 import "time"
 {{end}} 
-
 type {{.ModelName}} struct {
 {{- range .Fields}}
     {{.Name}} {{.Type}} ` + "`{{.Tags}}`" + `
