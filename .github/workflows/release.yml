@@ -1,8 +1,10 @@
 run-name: Release-Build
 on:
+  push:
+    branches:
+      - main
+      - master
   workflow_dispatch:
-  release:
-    types: [created]
 
 permissions:
   contents: write
@@ -19,6 +21,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: linux
           goarch: amd64
+          release_tag: [created]
           binary_name: go-generator-repository-bin
           asset_name: "go-generator-repository"
           compress_assets: OFF
