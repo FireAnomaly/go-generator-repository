@@ -20,6 +20,5 @@ jobs:
           goos: linux
           goarch: amd64
           binary_name: "go-generator-repository"
-          asset_name: "go-generator-repository"
           compress_assets: OFF
           overwrite: TRUE
